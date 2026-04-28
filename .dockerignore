@@ -8,4 +8,5 @@ tests/
 coverage/
 .cursor/
 agent-tools/
+npm-debug.log*
 *.log
