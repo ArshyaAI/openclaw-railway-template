@@ -87,10 +87,10 @@ summaries. It does not inspect Railway variables and does not mutate local
 GBrain sources.
 
 The runtime-readonly mode SSHes into only the target service and prints
-redacted diagnostics: versions, OpenClaw config validation, MCP/plugin
-discovery, fast GBrain health, job supervisor status, cron file names, and
-the direct-minions process count. It does not print environment variables or
-token values.
+redacted diagnostics: versions, safe OpenClaw config metadata, config
+validation, MCP/plugin discovery, fast GBrain health, job supervisor status,
+dead-job summary, cron file names, and the direct-minions process count. It
+does not print environment variables or token values.
 
 ## Safe Railway Verification
 

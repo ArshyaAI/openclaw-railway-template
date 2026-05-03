@@ -253,13 +253,31 @@ run_runtime_readonly() {
     done
   }
 
+  run_optional_step() {
+    local label="$1"
+    shift
+    local output
+    echo "== $label =="
+    if output="$(ssh_target "$@" 2>&1)"; then
+      printf '%s\n' "$output" | redact_sensitive
+    else
+      printf '%s\n' "$output" | redact_sensitive
+      echo "WARN optional runtime read-only command failed: $label" >&2
+    fi
+    sleep 1
+  }
+
   run_step "openclaw version" /app/node_modules/.bin/openclaw --version
   run_step "gbrain version" /data/.bun/bin/gbrain --version
   run_step "node version" node -p process.version
   run_step "bun version" /data/.bun/bin/bun --version
 
+  run_step "openclaw config file" /app/node_modules/.bin/openclaw config file
+  run_step "openclaw gateway auth mode" /app/node_modules/.bin/openclaw config get gateway.auth.mode
+  run_step "openclaw gateway bind" /app/node_modules/.bin/openclaw config get gateway.bind
   run_step "openclaw config validate" /app/node_modules/.bin/openclaw config validate
   run_step "openclaw mcp list" /app/node_modules/.bin/openclaw mcp list
+  run_optional_step "openclaw gbrain plugin config" /app/node_modules/.bin/openclaw config get plugins.entries.gbrain
   run_step_filtered "openclaw plugin gbrain scan" "gbrain|Plugins \\(|failed|device-pair" \
     /app/node_modules/.bin/openclaw plugins list
   run_step "openclaw skill query" /app/node_modules/.bin/openclaw skills info query
@@ -267,6 +285,7 @@ run_runtime_readonly() {
   run_step "gbrain fast doctor" /data/.bun/bin/gbrain doctor --fast --json
   run_step "gbrain supervisor" /data/.bun/bin/gbrain jobs supervisor status --json
   run_step "gbrain job stats" /data/.bun/bin/gbrain jobs stats
+  run_step "gbrain dead jobs summary" /data/.bun/bin/gbrain jobs list --status dead --limit 5
 
   run_step "cron names /etc/cron.d" ls -1 /etc/cron.d
   run_step "cron names /data/.openclaw/cron/system" ls -1 /data/.openclaw/cron/system
