@@ -55,6 +55,9 @@ Known blockers:
   plugin path.
 - Recent logs show `token_mismatch` websocket loops and repeated
   `sessions/store` rotations.
+- Latest runtime read-only check shows one dead `shell` job in the last 24h
+  (`gbrain jobs list --status dead --limit 5` reported job `1451`, created
+  `2026-05-03T11:15:00`).
 - Remote MCP auth posture cannot be verified on runtime GBrain `0.22.4`
   because `gbrain auth` is unavailable.
 - Dirty/untracked Markdown indexing proof and OpenClaw agent canary require
@@ -76,24 +79,35 @@ Run:
 ```bash
 npm run verify:gbrain -- --help
 npm run verify:gbrain -- --local
+npm run verify:gbrain -- --runtime-readonly
 ```
 
 The local mode reads this repository, local CLI versions, and safe health
 summaries. It does not inspect Railway variables and does not mutate local
 GBrain sources.
 
+The runtime-readonly mode SSHes into only the target service and prints
+redacted diagnostics: versions, OpenClaw config validation, MCP/plugin
+discovery, fast GBrain health, job supervisor status, cron file names, and
+the direct-minions process count. It does not print environment variables or
+token values.
+
 ## Safe Railway Verification
 
 Run only when Railway CLI is authenticated:
 
 ```bash
-npm run verify:gbrain -- --railway
+GBRAIN_VERIFY_TMPDIR=/private/tmp npm run verify:gbrain -- --railway
 ```
 
-The Railway mode creates a temporary CLI link under `/tmp`, targets only service
-ID `6f333a2b-07d9-4219-8531-3b96fbc6a2f9`, and reads service status, deployment
-history, and filtered runtime logs. It refuses the forbidden service ID and does
-not read variables.
+The Railway mode creates a temporary CLI link under the configured temp
+directory, targets only service ID `6f333a2b-07d9-4219-8531-3b96fbc6a2f9`, and
+reads service status, deployment history, and filtered runtime logs. It refuses
+the forbidden service ID and does not read variables.
+
+The `GBRAIN_VERIFY_TMPDIR` prefix keeps Railway's temporary link inside a
+Codex-writable scratch directory on macOS. In a normal shell this can be omitted
+if `/tmp` and your default temp directory are writable.
 
 ## Upgrade Gate
 

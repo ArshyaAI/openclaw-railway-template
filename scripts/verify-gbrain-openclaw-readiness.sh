@@ -15,11 +15,15 @@ Usage:
   npm run verify:gbrain -- --help
   npm run verify:gbrain -- --local
   npm run verify:gbrain -- --railway
+  npm run verify:gbrain -- --runtime-readonly
 
 Modes:
   --local     Read local repo pins and safe local CLI health summaries.
   --railway   Read target Railway service status, deployment history, and
               filtered logs using a temporary CLI link.
+  --runtime-readonly
+              SSH into the target service and run redacted read-only runtime
+              diagnostics. Does not print env vars or secret values.
 
 Safety:
   This verifier never reads Railway variables and never deploys, restarts,
@@ -49,6 +53,7 @@ count_matches() {
 
 redact_sensitive() {
   sed -E \
+    -e 's/^([A-Za-z0-9_]*(TOKEN|KEY|SECRET|PASSWORD|PASS|AUTH|SID|COOKIE|CREDENTIAL|DATABASE)[A-Za-z0-9_]*=).*/\1REDACTED/g' \
     -e 's/(conn|instance|runId|profile)=([^ ]+)/\1=REDACTED/g' \
     -e 's/(Bearer )[A-Za-z0-9._-]+/\1REDACTED/g' \
     -e 's/(OPENAI_API_KEY|ANTHROPIC_API_KEY|DATABASE_URL)=([^ ]+)/\1=REDACTED/g' \
@@ -112,7 +117,14 @@ run_railway() {
     exit 2
   fi
 
-  tmpbase="${GBRAIN_VERIFY_TMPDIR:-/tmp}"
+  tmpbase="${GBRAIN_VERIFY_TMPDIR:-}"
+  if [[ -z "$tmpbase" ]]; then
+    if [[ "$(uname -s)" == "Darwin" ]]; then
+      tmpbase="/private/tmp"
+    else
+      tmpbase="${TMPDIR:-/tmp}"
+    fi
+  fi
   mkdir -p "$tmpbase"
   tmpdir="$(mktemp -d "$tmpbase/gbrain-railway-readonly.XXXXXX")"
   trap 'rm -rf "$tmpdir"' EXIT
@@ -171,6 +183,96 @@ run_railway() {
   )
 }
 
+run_runtime_readonly() {
+  require_command railway
+  require_command rg
+
+  if [[ "$TARGET_SERVICE_ID" == "$FORBIDDEN_SERVICE_ID" ]]; then
+    echo "REFUSING forbidden service id: $FORBIDDEN_SERVICE_ID" >&2
+    exit 2
+  fi
+
+  echo "== runtime readonly target =="
+  echo "project=$TARGET_PROJECT_ID"
+  echo "environment=$TARGET_ENVIRONMENT ($TARGET_ENVIRONMENT_ID)"
+  echo "service=$TARGET_SERVICE_NAME ($TARGET_SERVICE_ID)"
+
+  ssh_target() {
+    railway ssh \
+      --project "$TARGET_PROJECT_ID" \
+      --environment "$TARGET_ENVIRONMENT" \
+      --service "$TARGET_SERVICE_ID" \
+      "$@"
+  }
+
+  run_step() {
+    local label="$1"
+    shift
+    local output
+    local attempt
+    echo "== $label =="
+    for attempt in 1 2 3; do
+      if output="$(ssh_target "$@" 2>&1)"; then
+        printf '%s\n' "$output" | redact_sensitive
+        sleep 1
+        return 0
+      fi
+      if [[ "$attempt" == "3" ]]; then
+        printf '%s\n' "$output" | redact_sensitive
+        echo "FAIL runtime read-only command failed: $label" >&2
+        exit 1
+      fi
+      echo "WARN retrying runtime read-only command: $label (attempt $attempt)" >&2
+      sleep 3
+    done
+  }
+
+  run_step_filtered() {
+    local label="$1"
+    local pattern="$2"
+    shift 2
+    local output
+    local attempt
+    echo "== $label =="
+    for attempt in 1 2 3; do
+      if output="$(ssh_target "$@" 2>&1)"; then
+        printf '%s\n' "$output" \
+          | redact_sensitive \
+          | rg -i "$pattern" \
+          | head -120 || true
+        sleep 1
+        return 0
+      fi
+      if [[ "$attempt" == "3" ]]; then
+        printf '%s\n' "$output" | redact_sensitive
+        echo "FAIL runtime read-only command failed: $label" >&2
+        exit 1
+      fi
+      echo "WARN retrying runtime read-only command: $label (attempt $attempt)" >&2
+      sleep 3
+    done
+  }
+
+  run_step "openclaw version" /app/node_modules/.bin/openclaw --version
+  run_step "gbrain version" /data/.bun/bin/gbrain --version
+  run_step "node version" node -p process.version
+  run_step "bun version" /data/.bun/bin/bun --version
+
+  run_step "openclaw config validate" /app/node_modules/.bin/openclaw config validate
+  run_step "openclaw mcp list" /app/node_modules/.bin/openclaw mcp list
+  run_step_filtered "openclaw plugin gbrain scan" "gbrain|Plugins \\(|failed|device-pair" \
+    /app/node_modules/.bin/openclaw plugins list
+  run_step "openclaw skill query" /app/node_modules/.bin/openclaw skills info query
+
+  run_step "gbrain fast doctor" /data/.bun/bin/gbrain doctor --fast --json
+  run_step "gbrain supervisor" /data/.bun/bin/gbrain jobs supervisor status --json
+  run_step "gbrain job stats" /data/.bun/bin/gbrain jobs stats
+
+  run_step "cron names /etc/cron.d" ls -1 /etc/cron.d
+  run_step "cron names /data/.openclaw/cron/system" ls -1 /data/.openclaw/cron/system
+  run_step "direct-minions process count" pgrep -cf direct-minions
+}
+
 main() {
   case "${1:-}" in
     --help|-h)
@@ -181,6 +283,9 @@ main() {
       ;;
     --railway)
       run_railway
+      ;;
+    --runtime-readonly)
+      run_runtime_readonly
       ;;
     "")
       usage
