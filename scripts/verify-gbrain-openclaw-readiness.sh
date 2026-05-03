@@ -18,6 +18,7 @@ Usage:
   npm run verify:gbrain -- --railway-current
   npm run verify:gbrain -- --runtime-readonly
   npm run verify:gbrain -- --dead-jobs-readonly
+  npm run verify:gbrain -- --gbrain-install-readonly
 
 Modes:
   --local     Read local repo pins and safe local CLI health summaries.
@@ -32,6 +33,9 @@ Modes:
   --dead-jobs-readonly
               SSH into the target service and print metadata/error summaries
               for recent dead GBrain jobs. Does not print payload/stdout/stderr.
+  --gbrain-install-readonly
+              SSH into the target service and print the active GBrain wrapper,
+              git checkout, package version, and binary version. No env dump.
 
 Safety:
   This verifier never reads Railway variables and never deploys, restarts,
@@ -400,6 +404,52 @@ done
 '
 }
 
+run_gbrain_install_readonly() {
+  require_command railway
+
+  if [[ "$TARGET_SERVICE_ID" == "$FORBIDDEN_SERVICE_ID" ]]; then
+    echo "REFUSING forbidden service id: $FORBIDDEN_SERVICE_ID" >&2
+    exit 2
+  fi
+
+  echo "== gbrain install readonly target =="
+  echo "project=$TARGET_PROJECT_ID"
+  echo "environment=$TARGET_ENVIRONMENT ($TARGET_ENVIRONMENT_ID)"
+  echo "service=$TARGET_SERVICE_NAME ($TARGET_SERVICE_ID)"
+
+  railway ssh \
+    --project "$TARGET_PROJECT_ID" \
+    --environment "$TARGET_ENVIRONMENT" \
+    --service "$TARGET_SERVICE_ID" \
+    '
+set -eu
+echo "== gbrain wrapper =="
+printf "wrapper_path=/data/.bun/bin/gbrain\n"
+ls -l /data/.bun/bin/gbrain
+sed -n "1,12p" /data/.bun/bin/gbrain \
+  | grep -E "^(#!/usr/bin/env bash|set -e|export HOME=/data|export GBRAIN_HOME=/data/.gbrain|export BRAIN_REPO=/data/brain|cd /data/gbrain|exec /data/.bun/bin/bun run src/cli.ts)" || true
+
+echo "== gbrain checkout =="
+cd /data/gbrain
+printf "branch="
+git branch --show-current || true
+printf "head="
+git rev-parse HEAD
+printf "status_short_count="
+git status --short | wc -l | tr -d " "
+printf "\n"
+git status --short | head -20
+printf "remote_fetch="
+git remote get-url origin 2>/dev/null || true
+printf "package_version="
+node -e "console.log(require(\"./package.json\").version)" 2>/dev/null || true
+printf "bun_version="
+/data/.bun/bin/bun --version
+printf "gbrain_version="
+/data/.bun/bin/gbrain --version
+'
+}
+
 main() {
   case "${1:-}" in
     --help|-h)
@@ -419,6 +469,9 @@ main() {
       ;;
     --dead-jobs-readonly)
       run_dead_jobs_readonly
+      ;;
+    --gbrain-install-readonly)
+      run_gbrain_install_readonly
       ;;
     "")
       usage
