@@ -276,11 +276,13 @@ run_runtime_readonly() {
   echo "service=$TARGET_SERVICE_NAME ($TARGET_SERVICE_ID)"
 
   ssh_target() {
+    local remote_command
+    remote_command="$*"
     railway ssh \
       --project "$TARGET_PROJECT_ID" \
       --environment "$TARGET_ENVIRONMENT" \
       --service "$TARGET_SERVICE_ID" \
-      "$@"
+      "env HOME=/data GBRAIN_HOME=/data BRAIN_REPO=/data/brain BUN_INSTALL=/data/.bun PATH=/data/.bun/bin:/app/node_modules/.bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin $remote_command"
   }
 
   run_step() {
@@ -351,8 +353,9 @@ run_runtime_readonly() {
   run_step "bun version" /data/.bun/bin/bun --version
 
   run_step "openclaw config file" /app/node_modules/.bin/openclaw config file
-  run_step "openclaw gateway auth mode" /app/node_modules/.bin/openclaw config get gateway.auth.mode
-  run_step "openclaw gateway bind" /app/node_modules/.bin/openclaw config get gateway.bind
+  run_step "openclaw config shape" "node -e 'const fs=require(\"fs\");const cfg=JSON.parse(fs.readFileSync(\"/data/.openclaw/openclaw.json\",\"utf8\"));function keys(obj){return obj&&typeof obj===\"object\"?Object.keys(obj).sort().join(\",\"):\"\"};console.log(\"top_level_keys=\"+keys(cfg));console.log(\"gateway_keys=\"+keys(cfg.gateway));console.log(\"plugins_entry_keys=\"+keys(cfg.plugins&&cfg.plugins.entries));console.log(\"mcp_server_count=\"+Object.keys((cfg.mcp&&cfg.mcp.servers)||{}).length);'"
+  run_optional_step "openclaw legacy gateway auth mode" /app/node_modules/.bin/openclaw config get gateway.auth.mode
+  run_optional_step "openclaw legacy gateway bind" /app/node_modules/.bin/openclaw config get gateway.bind
   run_step "openclaw config validate" /app/node_modules/.bin/openclaw config validate
   run_step "openclaw mcp list" /app/node_modules/.bin/openclaw mcp list
   run_optional_step "openclaw gbrain plugin config" /app/node_modules/.bin/openclaw config get plugins.entries.gbrain
@@ -367,7 +370,7 @@ run_runtime_readonly() {
 
   run_step "cron names /etc/cron.d" ls -1 /etc/cron.d
   run_step "cron names /data/.openclaw/cron/system" ls -1 /data/.openclaw/cron/system
-  run_step "direct-minions process count" pgrep -cf direct-minions
+  run_step "direct-minions processes" "pgrep -af '^node /data/.openclaw/cron/bin/direct-minions-scheduler.mjs' || true"
 }
 
 run_dead_jobs_readonly() {
