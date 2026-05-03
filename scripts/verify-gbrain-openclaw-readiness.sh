@@ -17,6 +17,7 @@ Usage:
   npm run verify:gbrain -- --railway
   npm run verify:gbrain -- --railway-current
   npm run verify:gbrain -- --runtime-readonly
+  npm run verify:gbrain -- --dead-jobs-readonly
 
 Modes:
   --local     Read local repo pins and safe local CLI health summaries.
@@ -28,6 +29,9 @@ Modes:
   --runtime-readonly
               SSH into the target service and run redacted read-only runtime
               diagnostics. Does not print env vars or secret values.
+  --dead-jobs-readonly
+              SSH into the target service and print metadata/error summaries
+              for recent dead GBrain jobs. Does not print payload/stdout/stderr.
 
 Safety:
   This verifier never reads Railway variables and never deploys, restarts,
@@ -362,6 +366,40 @@ run_runtime_readonly() {
   run_step "direct-minions process count" pgrep -cf direct-minions
 }
 
+run_dead_jobs_readonly() {
+  require_command railway
+
+  if [[ "$TARGET_SERVICE_ID" == "$FORBIDDEN_SERVICE_ID" ]]; then
+    echo "REFUSING forbidden service id: $FORBIDDEN_SERVICE_ID" >&2
+    exit 2
+  fi
+
+  echo "== dead jobs readonly target =="
+  echo "project=$TARGET_PROJECT_ID"
+  echo "environment=$TARGET_ENVIRONMENT ($TARGET_ENVIRONMENT_ID)"
+  echo "service=$TARGET_SERVICE_NAME ($TARGET_SERVICE_ID)"
+
+  railway ssh \
+    --project "$TARGET_PROJECT_ID" \
+    --environment "$TARGET_ENVIRONMENT" \
+    --service "$TARGET_SERVICE_ID" \
+    '
+set -eu
+ids="$(/data/.bun/bin/gbrain jobs list --status dead --limit 5 | sed -nE "s/^ *([0-9]+) .*/\1/p" | head -5)"
+if [ -z "$ids" ]; then
+  echo "no_dead_jobs"
+  exit 0
+fi
+for id in $ids; do
+  echo "== job $id metadata =="
+  /data/.bun/bin/gbrain jobs get "$id" 2>/dev/null \
+    | sed -E "s/sk-[A-Za-z0-9_-]{20,}/sk-REDACTED/g; s/Bearer [A-Za-z0-9._-]+/Bearer REDACTED/g; s#postgres(ql)?://[^ ]+#POSTGRES_URL_REDACTED#g" \
+    | grep -Ei "^(Job #|  ID:|  Name:|  Type:|  Status:|  Queue:|  Created:|  Started:|  Finished:|  Duration:|  Attempts:|  Error:)|Config warnings|plugins\\.entries\\.device-pair|FallbackSummaryError|FailoverError|rate_limit|usage limit" \
+    | head -40 || true
+done
+'
+}
+
 main() {
   case "${1:-}" in
     --help|-h)
@@ -378,6 +416,9 @@ main() {
       ;;
     --runtime-readonly)
       run_runtime_readonly
+      ;;
+    --dead-jobs-readonly)
+      run_dead_jobs_readonly
       ;;
     "")
       usage
