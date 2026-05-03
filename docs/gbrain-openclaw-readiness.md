@@ -58,8 +58,9 @@ Forbidden non-target service:
   `/data/.openclaw/cron/direct-minions/jobs.json.bak.disable-agent-wrappers-20260503T174921Z`.
   The direct GBrain shell jobs remain enabled. Historical dead jobs still show
   earlier `openai-codex/gpt-5.5` cooldown / ChatGPT usage-limit failures.
-- `plugins.entries.device-pair` remains present while that bundled plugin is
-  disabled by default, producing a noisy OpenClaw config warning.
+- Stale `plugins.entries.device-pair` warning noise was removed from the
+  runtime OpenClaw config. Backup:
+  `/data/.openclaw/openclaw.json.bak.remove-device-pair-20260503T175758Z`.
 - Local workstation `gbrain` now reports `gbrain 0.26.0` from
   `/Users/arshya/gbrain` at upstream
   `d01a921e01243c326e2508c7d21eb85095f1fbe8`. Local doctor is still not the
@@ -124,6 +125,7 @@ OpenClaw config backups created during MCP work:
 - `/data/.openclaw/openclaw.json.bak.codex-gbrain-mcp-20260503T173756Z`
 - `/data/.openclaw/openclaw.json.bak.codex-gbrain-plugin-20260503T173655Z`
 - `/data/.openclaw/openclaw.json.bak.codex-gbrain-plugin-20260503T173644Z`
+- `/data/.openclaw/openclaw.json.bak.remove-device-pair-20260503T175758Z`
 
 Direct-minions jobs backup before disabling scheduled OpenClaw agent wrappers:
 
