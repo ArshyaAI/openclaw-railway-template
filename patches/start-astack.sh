@@ -91,9 +91,25 @@ configure_openclaw_gbrain_mcp() {
   fi
 }
 
+schedule_post_boot_openclaw_gbrain_mcp() {
+  (
+    for delay in 5 10 20 40; do
+      sleep "$delay"
+      configure_openclaw_gbrain_mcp
+      if /app/node_modules/.bin/openclaw mcp list 2>/tmp/openclaw-mcp-list.log | grep -q '^- gbrain'; then
+        echo "[start-astack] post-boot gbrain MCP config verified"
+        exit 0
+      fi
+    done
+    echo "[start-astack] warning: post-boot gbrain MCP verification did not pass" >&2
+    sed -n '1,20p' /tmp/openclaw-mcp-list.log >&2 || true
+  ) &
+}
+
 restore_persisted_crons
 start_cron
 start_gbrain_supervisor
 configure_openclaw_gbrain_mcp
+schedule_post_boot_openclaw_gbrain_mcp
 
 exec alphaclaw start
