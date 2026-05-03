@@ -38,10 +38,10 @@ Forbidden non-target service:
 | Full doctor | `status=warnings`, `health_score=90`, DB/pgvector/RLS/schema/embeddings/jsonb/body/queue ok | `PASS_WITH_WARNINGS` |
 | OpenClaw MCP config | `gbrain` stdio MCP configured via `/data/.bun/bin/gbrain serve` | `PASS` |
 | MCP smoke | Client listed `41` tools, including `search`, `query`, `get_page` | `PASS` |
-| OpenClaw agent canary | Run `218ba6bd-8da9-47c3-a6f1-d0866ed7b338`, `status=ok`, used `gbrain__query` and `gbrain__search` | `PASS` |
-| Runtime logs | Last 10m after canary: `token_mismatch=0`, `sessions_store=0`, `rate_limit=0` | `PASS` |
+| OpenClaw agent canary | Final run `926ca872-5d8c-4803-aa13-d2d8bab5f42c`, `status=ok`, used `gbrain__query`, `gbrain__search`, and `gbrain__list_pages` with no fallback | `PASS` |
+| Runtime logs | Last 10m after final canary: `current_total_lines=2`, `token_mismatch=0`, `sessions_store=0`, `rate_limit=0` | `PASS` |
 | Dirty/untracked Markdown sync | Synthetic allowlisted source indexed dirty tracked and untracked Markdown without false `up_to_date` | `PASS` |
-| Direct-minions scheduler | Process `236 node /data/.openclaw/cron/bin/direct-minions-scheduler.mjs`; GBrain queue `0 waiting, 0 active, 0 stalled` | `PASS_WITH_CONCERNS` |
+| Direct-minions scheduler | Process `236 node /data/.openclaw/cron/bin/direct-minions-scheduler.mjs`; active OpenClaw agent wrappers `0`; direct GBrain shell jobs `11`; queue `0 waiting, 0 active, 0 stalled` | `PASS` |
 
 ## Known Concerns
 
@@ -52,19 +52,23 @@ Forbidden non-target service:
 - `gbrain doctor --json` still warns on resolver routing fixtures and
   `frontmatter_integrity` (`4129` issues across `21` sources). DB, schema,
   embeddings, JSONB, markdown body completeness, and queue health are ok.
-- Some enabled direct-minions jobs intentionally call
-  `gbrain-submit-openclaw-agent-job.sh`; recent dead jobs were caused by
+- Seven direct-minions jobs that called
+  `gbrain-submit-openclaw-agent-job.sh` were disabled in runtime state to stop
+  scheduled OpenClaw agent-wrapper quota exposure. Backup:
+  `/data/.openclaw/cron/direct-minions/jobs.json.bak.disable-agent-wrappers-20260503T174921Z`.
+  The direct GBrain shell jobs remain enabled. Historical dead jobs still show
   earlier `openai-codex/gpt-5.5` cooldown / ChatGPT usage-limit failures.
-  Current post-canary logs are clean, but these jobs can still consume model
-  quota.
 - `plugins.entries.device-pair` remains present while that bundled plugin is
   disabled by default, producing a noisy OpenClaw config warning.
-- Local workstation `gbrain` is still older than the runtime. Use the runtime
-  binary for target verification until local GBrain is upgraded separately.
+- Local workstation `gbrain` now reports `gbrain 0.26.0` from
+  `/Users/arshya/gbrain` at upstream
+  `d01a921e01243c326e2508c7d21eb85095f1fbe8`. Local doctor is still not the
+  authority for the Railway target because the local supervisor is intentionally
+  not running.
 - Oracle Pro final gate agreed that `PASS_WITH_CONCERNS` is defensible for this
   target, but rejected any claim of perfect/full-feature readiness until doctor
-  warnings, upstream plugin packaging, direct-minions quota exposure,
-  restart/soak proof, and broader MCP tool coverage are addressed or waived.
+  warnings, upstream plugin packaging, restart/soak proof, and broader MCP tool
+  coverage are addressed or waived.
 
 ## Safe Verification Commands
 
@@ -93,6 +97,16 @@ railway ssh --project fbdb217b-060f-4f1e-8697-08a6288a19c4 \
   "env HOME=/data GBRAIN_HOME=/data BRAIN_REPO=/data/brain BUN_INSTALL=/data/.bun PATH=/data/.bun/bin:/app/node_modules/.bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin /app/node_modules/.bin/openclaw mcp list"
 ```
 
+Check that no enabled direct-minions job still launches an OpenClaw agent
+wrapper:
+
+```bash
+railway ssh --project fbdb217b-060f-4f1e-8697-08a6288a19c4 \
+  --environment production \
+  --service 6f333a2b-07d9-4219-8531-3b96fbc6a2f9 \
+  "env HOME=/data GBRAIN_HOME=/data BRAIN_REPO=/data/brain BUN_INSTALL=/data/.bun PATH=/data/.bun/bin:/app/node_modules/.bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin node -e 'const fs=require(\"fs\"); const root=JSON.parse(fs.readFileSync(\"/data/.openclaw/cron/direct-minions/jobs.json\",\"utf8\")); const jobs=Array.isArray(root)?root:root.jobs; const active=jobs.filter(j=>j.enabled!==false && String(j.command||\"\").includes(\"gbrain-submit-openclaw-agent-job.sh\")); console.log(JSON.stringify({active_agent_wrappers:active.map(j=>j.name),active_count:active.length},null,2));'"
+```
+
 ## Rollback Notes
 
 Runtime deployment rollback target:
@@ -110,6 +124,10 @@ OpenClaw config backups created during MCP work:
 - `/data/.openclaw/openclaw.json.bak.codex-gbrain-mcp-20260503T173756Z`
 - `/data/.openclaw/openclaw.json.bak.codex-gbrain-plugin-20260503T173655Z`
 - `/data/.openclaw/openclaw.json.bak.codex-gbrain-plugin-20260503T173644Z`
+
+Direct-minions jobs backup before disabling scheduled OpenClaw agent wrappers:
+
+- `/data/.openclaw/cron/direct-minions/jobs.json.bak.disable-agent-wrappers-20260503T174921Z`
 
 To remove only the direct GBrain MCP entry:
 
@@ -129,5 +147,8 @@ railway ssh --project fbdb217b-060f-4f1e-8697-08a6288a19c4 \
   deployable runtime template repo.
 - Treat `/Users/arshya/Desktop/AI.nosync/astack` as the local evidence/report
   workspace, not the runtime repo.
+- Keep the seven disabled OpenClaw agent-wrapper direct-minions jobs disabled
+  until there is a written quota/session-churn guardrail and explicit approval
+  to re-enable them.
 - Do not expose remote HTTP MCP, OAuth clients, tunnels, webhooks, or new cron
   entries without a new written guardrail pass.
