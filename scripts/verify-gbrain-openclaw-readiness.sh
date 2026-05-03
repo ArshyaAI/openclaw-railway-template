@@ -15,12 +15,16 @@ Usage:
   npm run verify:gbrain -- --help
   npm run verify:gbrain -- --local
   npm run verify:gbrain -- --railway
+  npm run verify:gbrain -- --railway-current
   npm run verify:gbrain -- --runtime-readonly
 
 Modes:
   --local     Read local repo pins and safe local CLI health summaries.
   --railway   Read target Railway service status, deployment history, and
               filtered logs using a temporary CLI link.
+  --railway-current
+              Read the target Railway service status and summarize recent risk
+              logs from the last GBRAIN_VERIFY_SINCE window (default: 10m).
   --runtime-readonly
               SSH into the target service and run redacted read-only runtime
               diagnostics. Does not print env vars or secret values.
@@ -77,6 +81,20 @@ console.log(`verified_target=${service.name} (${service.id})`);
 ' "$TARGET_SERVICE_ID" "$TARGET_SERVICE_NAME"
 }
 
+make_tmpdir() {
+  local tmpbase
+  tmpbase="${GBRAIN_VERIFY_TMPDIR:-}"
+  if [[ -z "$tmpbase" ]]; then
+    if [[ "$(uname -s)" == "Darwin" ]]; then
+      tmpbase="/private/tmp"
+    else
+      tmpbase="${TMPDIR:-/tmp}"
+    fi
+  fi
+  mkdir -p "$tmpbase"
+  mktemp -d "$tmpbase/gbrain-railway-readonly.XXXXXX"
+}
+
 json_package_value() {
   node -e "const p=require('./package.json'); const path=process.argv[1].split('.'); let v=p; for (const k of path) v=v?.[k]; console.log(v ?? '')" "$1"
 }
@@ -117,16 +135,7 @@ run_railway() {
     exit 2
   fi
 
-  tmpbase="${GBRAIN_VERIFY_TMPDIR:-}"
-  if [[ -z "$tmpbase" ]]; then
-    if [[ "$(uname -s)" == "Darwin" ]]; then
-      tmpbase="/private/tmp"
-    else
-      tmpbase="${TMPDIR:-/tmp}"
-    fi
-  fi
-  mkdir -p "$tmpbase"
-  tmpdir="$(mktemp -d "$tmpbase/gbrain-railway-readonly.XXXXXX")"
+  tmpdir="$(make_tmpdir)"
   trap 'rm -rf "$tmpdir"' EXIT
 
   echo "== railway target =="
@@ -180,6 +189,67 @@ run_railway() {
     echo "rate_limit_lines=$rate_limit_matches"
     echo "last_matching_lines="
     tail -40 "$risk_log" | redact_sensitive
+  )
+}
+
+run_railway_current() {
+  require_command railway
+  require_command rg
+  require_command node
+
+  if [[ "$TARGET_SERVICE_ID" == "$FORBIDDEN_SERVICE_ID" ]]; then
+    echo "REFUSING forbidden service id: $FORBIDDEN_SERVICE_ID" >&2
+    exit 2
+  fi
+
+  tmpdir="$(make_tmpdir)"
+  trap 'rm -rf "$tmpdir"' EXIT
+  since="${GBRAIN_VERIFY_SINCE:-10m}"
+
+  echo "== railway current target =="
+  echo "project=$TARGET_PROJECT_ID"
+  echo "environment=$TARGET_ENVIRONMENT ($TARGET_ENVIRONMENT_ID)"
+  echo "service=$TARGET_SERVICE_NAME ($TARGET_SERVICE_ID)"
+  echo "since=$since"
+
+  (
+    cd "$tmpdir"
+    railway link \
+      --project "$TARGET_PROJECT_ID" \
+      --environment "$TARGET_ENVIRONMENT" \
+      --service "$TARGET_SERVICE_ID" \
+      --json
+
+    echo "== service status =="
+    service_status_json="$(railway service status \
+      --service "$TARGET_SERVICE_ID" \
+      --environment "$TARGET_ENVIRONMENT" \
+      --json)"
+    printf '%s\n' "$service_status_json" | assert_target_service_status
+    printf '%s\n' "$service_status_json"
+
+    echo "== current risk log summary =="
+    raw_log="$tmpdir/current-logs.txt"
+    railway logs \
+      --service "$TARGET_SERVICE_ID" \
+      --environment "$TARGET_ENVIRONMENT" \
+      --since "$since" \
+      --lines 500 \
+      > "$raw_log"
+
+    total_lines="$(wc -l < "$raw_log" | tr -d ' ')"
+    token_mismatch_matches="$(count_matches "token_mismatch" "$raw_log")"
+    session_store_matches="$(count_matches "sessions/store" "$raw_log")"
+    rate_limit_matches="$(count_matches "prolite|rate limit|usage limit|FailoverError" "$raw_log")"
+
+    echo "current_total_lines=$total_lines"
+    echo "current_token_mismatch_lines=$token_mismatch_matches"
+    echo "current_sessions_store_lines=$session_store_matches"
+    echo "current_rate_limit_lines=$rate_limit_matches"
+    echo "current_matching_lines="
+    rg -i "token_mismatch|sessions/store|prolite|rate limit|usage limit|FailoverError" "$raw_log" \
+      | tail -40 \
+      | redact_sensitive || true
   )
 }
 
@@ -302,6 +372,9 @@ main() {
       ;;
     --railway)
       run_railway
+      ;;
+    --railway-current)
+      run_railway_current
       ;;
     --runtime-readonly)
       run_runtime_readonly

@@ -80,6 +80,7 @@ Run:
 npm run verify:gbrain -- --help
 npm run verify:gbrain -- --local
 npm run verify:gbrain -- --runtime-readonly
+GBRAIN_VERIFY_SINCE=10m npm run verify:gbrain -- --railway-current
 ```
 
 The local mode reads this repository, local CLI versions, and safe health
@@ -91,6 +92,10 @@ redacted diagnostics: versions, safe OpenClaw config metadata, config
 validation, MCP/plugin discovery, fast GBrain health, job supervisor status,
 dead-job summary, cron file names, and the direct-minions process count. It
 does not print environment variables or token values.
+
+The railway-current mode checks the same target service and summarizes recent
+risk logs from `GBRAIN_VERIFY_SINCE` (default `10m`). Use it to distinguish old
+historical blockers from newly recurring runtime issues.
 
 ## Safe Railway Verification
 
