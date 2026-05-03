@@ -59,8 +59,41 @@ start_gbrain_supervisor() {
   fi
 }
 
+configure_openclaw_gbrain_mcp() {
+  local openclaw_bin="/app/node_modules/.bin/openclaw"
+  local gbrain_bin="/data/.bun/bin/gbrain"
+
+  if [ ! -x "$openclaw_bin" ] || [ ! -x "$gbrain_bin" ]; then
+    echo "[start-astack] OpenClaw or GBrain binary missing; skipping MCP config"
+    return 0
+  fi
+
+  export HOME=/data
+  export GBRAIN_HOME=/data
+  export BRAIN_REPO=/data/brain
+  export BUN_INSTALL=/data/.bun
+  export PATH="/data/.bun/bin:/app/node_modules/.bin:/usr/local/bin:/usr/bin:/bin:$PATH"
+
+  if "$openclaw_bin" mcp set gbrain '{"command":"/data/.bun/bin/gbrain","args":["serve"]}' >/tmp/openclaw-gbrain-mcp-set.log 2>&1; then
+    echo "[start-astack] ensured OpenClaw gbrain MCP server"
+  else
+    echo "[start-astack] warning: failed to ensure OpenClaw gbrain MCP server" >&2
+    sed -n '1,20p' /tmp/openclaw-gbrain-mcp-set.log >&2 || true
+  fi
+
+  if "$openclaw_bin" config unset plugins.entries.device-pair >/tmp/openclaw-device-pair-unset.log 2>&1; then
+    echo "[start-astack] removed stale device-pair config entry"
+  elif grep -Eiq 'not found|missing|does not exist|no such' /tmp/openclaw-device-pair-unset.log 2>/dev/null; then
+    echo "[start-astack] stale device-pair config entry already absent"
+  else
+    echo "[start-astack] warning: failed to remove stale device-pair config entry" >&2
+    sed -n '1,20p' /tmp/openclaw-device-pair-unset.log >&2 || true
+  fi
+}
+
 restore_persisted_crons
 start_cron
 start_gbrain_supervisor
+configure_openclaw_gbrain_mcp
 
 exec alphaclaw start
