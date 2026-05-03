@@ -15,7 +15,7 @@
     "@chrysb/alphaclaw": "0.9.12"
   },
   "overrides": {
-    "openclaw": "2026.4.24"
+    "openclaw": "2026.5.2"
   },
   "engines": {
     "node": ">=22.14.0"
