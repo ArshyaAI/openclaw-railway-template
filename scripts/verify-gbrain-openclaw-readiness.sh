@@ -7,7 +7,7 @@ TARGET_ENVIRONMENT_ID="614198f2-f7ed-4756-ae83-e0dd23943c9d"
 TARGET_SERVICE_ID="6f333a2b-07d9-4219-8531-3b96fbc6a2f9"
 TARGET_SERVICE_NAME="openclaw-railway-template"
 FORBIDDEN_SERVICE_ID="63b84308-25d7-4b03-9c23-4d0d7239728f"
-UPSTREAM_GBRAIN_SHA="3c032d79ecccff8d87a5b601a34b9e7cb8194dd7"
+UPSTREAM_GBRAIN_SHA="d01a921e01243c326e2508c7d21eb85095f1fbe8"
 
 usage() {
   cat <<'EOF'
@@ -427,7 +427,7 @@ echo "== gbrain wrapper =="
 printf "wrapper_path=/data/.bun/bin/gbrain\n"
 ls -l /data/.bun/bin/gbrain
 sed -n "1,12p" /data/.bun/bin/gbrain \
-  | grep -E "^(#!/usr/bin/env bash|set -e|export HOME=/data|export GBRAIN_HOME=/data/.gbrain|export BRAIN_REPO=/data/brain|cd /data/gbrain|exec /data/.bun/bin/bun run src/cli.ts)" || true
+  | grep -E "^(#!/usr/bin/env bash|set -e|export HOME=/data|export GBRAIN_HOME=/data|export BRAIN_REPO=/data/brain|cd /data/gbrain|exec /data/.bun/bin/bun run src/cli.ts)" || true
 
 echo "== gbrain checkout =="
 cd /data/gbrain
