@@ -2,6 +2,8 @@
 
 Status: `PASS_WITH_CONCERNS`
 Date: 2026-05-03
+Scope: core dogfood readiness for this target service, not perfect/full-feature
+readiness.
 
 This runbook captures the current production-target state for the approved
 OpenClaw/GBrain dogfood service. It is deliberately scoped to the target
@@ -59,6 +61,10 @@ Forbidden non-target service:
   disabled by default, producing a noisy OpenClaw config warning.
 - Local workstation `gbrain` is still older than the runtime. Use the runtime
   binary for target verification until local GBrain is upgraded separately.
+- Oracle Pro final gate agreed that `PASS_WITH_CONCERNS` is defensible for this
+  target, but rejected any claim of perfect/full-feature readiness until doctor
+  warnings, upstream plugin packaging, direct-minions quota exposure,
+  restart/soak proof, and broader MCP tool coverage are addressed or waived.
 
 ## Safe Verification Commands
 
