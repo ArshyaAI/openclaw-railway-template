@@ -35,6 +35,43 @@ require_command() {
   fi
 }
 
+count_matches() {
+  local pattern="$1"
+  local file="$2"
+  local count
+  count="$(rg -ci "$pattern" "$file" 2>/dev/null || true)"
+  if [[ -z "$count" ]]; then
+    echo "0"
+  else
+    echo "$count"
+  fi
+}
+
+redact_sensitive() {
+  sed -E \
+    -e 's/(conn|instance|runId|profile)=([^ ]+)/\1=REDACTED/g' \
+    -e 's/(Bearer )[A-Za-z0-9._-]+/\1REDACTED/g' \
+    -e 's/(OPENAI_API_KEY|ANTHROPIC_API_KEY|DATABASE_URL)=([^ ]+)/\1=REDACTED/g' \
+    -e 's#postgres(ql)?://[^ ]+#POSTGRES_URL_REDACTED#g' \
+    -e 's/sk-[A-Za-z0-9]{20,}/sk-REDACTED/g' \
+    -e 's/xox[baprs]-[A-Za-z0-9-]{20,}/xox-REDACTED/g' \
+    -e 's/gh[pousr]_[A-Za-z0-9]{20,}/gh_REDACTED/g'
+}
+
+assert_target_service_status() {
+  node -e '
+const fs = require("fs");
+const expectedId = process.argv[1];
+const expectedName = process.argv[2];
+const service = JSON.parse(fs.readFileSync(0, "utf8"));
+if (service.id !== expectedId || service.name !== expectedName) {
+  console.error(`FAIL wrong Railway service: got ${service.name} (${service.id})`);
+  process.exit(2);
+}
+console.log(`verified_target=${service.name} (${service.id})`);
+' "$TARGET_SERVICE_ID" "$TARGET_SERVICE_NAME"
+}
+
 json_package_value() {
   node -e "const p=require('./package.json'); const path=process.argv[1].split('.'); let v=p; for (const k of path) v=v?.[k]; console.log(v ?? '')" "$1"
 }
@@ -68,6 +105,7 @@ run_local() {
 run_railway() {
   require_command railway
   require_command rg
+  require_command node
 
   if [[ "$TARGET_SERVICE_ID" == "$FORBIDDEN_SERVICE_ID" ]]; then
     echo "REFUSING forbidden service id: $FORBIDDEN_SERVICE_ID" >&2
@@ -93,10 +131,12 @@ run_railway() {
       --json
 
     echo "== service status =="
-    railway service status \
+    service_status_json="$(railway service status \
       --service "$TARGET_SERVICE_ID" \
       --environment "$TARGET_ENVIRONMENT" \
-      --json
+      --json)"
+    printf '%s\n' "$service_status_json" | assert_target_service_status
+    printf '%s\n' "$service_status_json"
 
     echo "== latest deployments =="
     railway deployment list \
@@ -106,26 +146,28 @@ run_railway() {
       | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const xs=JSON.parse(s); for (const d of xs.slice(0,5)) console.log(`${d.id}\t${d.status}\t${d.createdAt}\t${d.meta?.cliMessage || d.meta?.commitMessage || ""}`);})'
 
     echo "== filtered risk logs =="
+    raw_log="$tmpdir/raw-logs.txt"
     risk_log="$tmpdir/risk-logs.txt"
     railway logs \
       --service "$TARGET_SERVICE_ID" \
       --environment "$TARGET_ENVIRONMENT" \
       --lines 500 \
-      | rg -i "token_mismatch|sessions/store|prolite|rate limit|gbrain|direct-minions|supervisor|cron|error|warn" \
-      > "$risk_log" || true
+      > "$raw_log"
+
+    rg -i "token_mismatch|sessions/store|prolite|rate limit|gbrain|direct-minions|supervisor|cron|error|warn" \
+      "$raw_log" > "$risk_log" || true
 
     total_matches="$(wc -l < "$risk_log" | tr -d ' ')"
-    token_mismatch_matches="$(rg -c "token_mismatch" "$risk_log" || true)"
-    session_store_matches="$(rg -c "sessions/store" "$risk_log" || true)"
-    rate_limit_matches="$(rg -ci "prolite|rate limit" "$risk_log" || true)"
+    token_mismatch_matches="$(count_matches "token_mismatch" "$risk_log")"
+    session_store_matches="$(count_matches "sessions/store" "$risk_log")"
+    rate_limit_matches="$(count_matches "prolite|rate limit" "$risk_log")"
 
     echo "matching_lines=$total_matches"
     echo "token_mismatch_lines=$token_mismatch_matches"
     echo "sessions_store_lines=$session_store_matches"
     echo "rate_limit_lines=$rate_limit_matches"
     echo "last_matching_lines="
-    tail -40 "$risk_log" \
-      | sed -E 's/(conn|instance|runId|profile)=([^ ]+)/\1=REDACTED/g'
+    tail -40 "$risk_log" | redact_sensitive
   )
 }
 

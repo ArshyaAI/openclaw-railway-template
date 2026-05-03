@@ -63,9 +63,10 @@ Known blockers:
 Positive evidence:
 
 - Target Railway deployment is `SUCCESS`.
-- Runtime `gbrain doctor --json` reports warnings with health score `95`.
+- The broader read-only audit, not this lightweight verifier alone, recorded
+  runtime `gbrain doctor --json` warnings with health score `95`.
 - DB, pgvector, RLS, embeddings, graph coverage, supervisor, jobs, and
-  direct-minions scheduler have read-only pass evidence.
+  direct-minions scheduler have broader read-only pass evidence.
 - No production mutation was performed during the audit.
 
 ## Safe Local Verification
