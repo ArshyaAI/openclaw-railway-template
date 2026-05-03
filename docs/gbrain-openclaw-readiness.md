@@ -1,14 +1,14 @@
 # GBrain / OpenClaw Readiness Runbook
 
-Status: `READ_ONLY_BLOCKED`
+Status: `PASS_WITH_CONCERNS`
 Date: 2026-05-03
 
-This runbook keeps GBrain/OpenClaw readiness checks reproducible without
-mutating Railway production state.
+This runbook captures the current production-target state for the approved
+OpenClaw/GBrain dogfood service. It is deliberately scoped to the target
+Railway service below and must not be reused for the NIKIN main production
+service.
 
-## Scope
-
-Target Railway service:
+## Target
 
 - Project: `ravishing-enjoyment`
 - Project ID: `fbdb217b-060f-4f1e-8697-08a6288a19c4`
@@ -16,133 +16,112 @@ Target Railway service:
 - Environment ID: `614198f2-f7ed-4756-ae83-e0dd23943c9d`
 - Service: `openclaw-railway-template`
 - Service ID: `6f333a2b-07d9-4219-8531-3b96fbc6a2f9`
+- Current deployment: `4dd37433-58ce-46b6-b8f7-36aa8fd54480`
 
 Forbidden non-target service:
 
 - `NIKIN - MAIN OC INSTANCE [PRODUCTION]`
 - Service ID: `63b84308-25d7-4b03-9c23-4d0d7239728f`
 
-Do not run deploys, restarts, variable edits, DB migrations, cron changes,
-OAuth changes, tunnel changes, webhook changes, or OpenClaw agent canaries
-without an explicit approval note and rollback plan.
+## Current State
 
-## Source Of Truth
+| Area | Evidence | Status |
+| --- | --- | --- |
+| OpenClaw runtime | `OpenClaw 2026.5.2 (8b2a6e5)` | `PASS` |
+| AlphaClaw runtime | `@chrysb/alphaclaw 0.9.12` | `PASS` |
+| GBrain runtime | `gbrain 0.26.0`, checkout `254609fdb9ace13b4147cdf4c5ef56460ec51dd9` | `PASS` |
+| Upstream source | `https://github.com/garrytan/gbrain`, inspected at `d01a921e01243c326e2508c7d21eb85095f1fbe8` | `PASS` |
+| GBrain schema | Schema `33`, latest `33` | `PASS` |
+| GBrain supervisor | Running from boot, PID `81`, `crashes_24h=0` | `PASS` |
+| Full doctor | `status=warnings`, `health_score=90`, DB/pgvector/RLS/schema/embeddings/jsonb/body/queue ok | `PASS_WITH_WARNINGS` |
+| OpenClaw MCP config | `gbrain` stdio MCP configured via `/data/.bun/bin/gbrain serve` | `PASS` |
+| MCP smoke | Client listed `41` tools, including `search`, `query`, `get_page` | `PASS` |
+| OpenClaw agent canary | Run `218ba6bd-8da9-47c3-a6f1-d0866ed7b338`, `status=ok`, used `gbrain__query` and `gbrain__search` | `PASS` |
+| Runtime logs | Last 10m after canary: `token_mismatch=0`, `sessions_store=0`, `rate_limit=0` | `PASS` |
+| Dirty/untracked Markdown sync | Synthetic allowlisted source indexed dirty tracked and untracked Markdown without false `up_to_date` | `PASS` |
+| Direct-minions scheduler | Process `236 node /data/.openclaw/cron/bin/direct-minions-scheduler.mjs`; GBrain queue `0 waiting, 0 active, 0 stalled` | `PASS_WITH_CONCERNS` |
 
-GBrain upstream is authoritative:
+## Known Concerns
 
-- Repository: https://github.com/garrytan/gbrain
-- Last inspected upstream commit: `3c032d79ecccff8d87a5b601a34b9e7cb8194dd7`
-- Upstream package version at that commit: `0.26.0`
-- Upstream OpenClaw plugin manifest version at that commit: `0.25.1`
+- Upstream GBrain still ships `openclaw.plugin.json`; OpenClaw `2026.5.2`
+  `plugins install /data/gbrain --link` rejected it because current OpenClaw
+  expects `package.json` `openclaw.extensions`. Runtime MCP is therefore
+  configured directly with `openclaw mcp set gbrain`, not via plugin install.
+- `gbrain doctor --json` still warns on resolver routing fixtures and
+  `frontmatter_integrity` (`4129` issues across `21` sources). DB, schema,
+  embeddings, JSONB, markdown body completeness, and queue health are ok.
+- Some enabled direct-minions jobs intentionally call
+  `gbrain-submit-openclaw-agent-job.sh`; recent dead jobs were caused by
+  earlier `openai-codex/gpt-5.5` cooldown / ChatGPT usage-limit failures.
+  Current post-canary logs are clean, but these jobs can still consume model
+  quota.
+- `plugins.entries.device-pair` remains present while that bundled plugin is
+  disabled by default, producing a noisy OpenClaw config warning.
+- Local workstation `gbrain` is still older than the runtime. Use the runtime
+  binary for target verification until local GBrain is upgraded separately.
 
-Do not use the public npm package named `gbrain` as authority. Upstream issue
-#505 identifies that package name as a dependency-confusion risk.
+## Safe Verification Commands
 
-## Current Readiness Snapshot
-
-The latest read-only audit did not prove daily-dogfood readiness.
-
-Known blockers:
-
-- Runtime GBrain is behind upstream: runtime `0.22.4`, upstream `0.26.0`.
-- Local GBrain is behind and schema-risky: local `0.18.2`, DB schema `30`,
-  local latest schema `24`.
-- OpenClaw runtime is behind npm latest: runtime `2026.4.24`, latest observed
-  `2026.5.2`.
-- AlphaClaw `0.9.12` depends on `openclaw: 2026.4.24`, so the OpenClaw pin is
-  intentional until compatibility is proven.
-- OpenClaw runtime has no configured MCP servers and no loaded upstream `gbrain`
-  plugin path.
-- Recent logs show `token_mismatch` websocket loops and repeated
-  `sessions/store` rotations.
-- Latest runtime read-only check shows one dead `shell` job in the last 24h
-  (`gbrain jobs list --status dead --limit 5` reported job `1451`, created
-  `2026-05-03T11:15:00`).
-- Remote MCP auth posture cannot be verified on runtime GBrain `0.22.4`
-  because `gbrain auth` is unavailable.
-- Dirty/untracked Markdown indexing proof and OpenClaw agent canary require
-  explicit production approval.
-
-Positive evidence:
-
-- Target Railway deployment is `SUCCESS`.
-- The broader read-only audit, not this lightweight verifier alone, recorded
-  runtime `gbrain doctor --json` warnings with health score `95`.
-- DB, pgvector, RLS, embeddings, graph coverage, supervisor, jobs, and
-  direct-minions scheduler have broader read-only pass evidence.
-- No production mutation was performed during the audit.
-
-## Safe Local Verification
-
-Run:
+Run from `/Users/arshya/Desktop/AI.nosync/openclaw-railway-template`:
 
 ```bash
 npm run verify:gbrain -- --help
 npm run verify:gbrain -- --local
 npm run verify:gbrain -- --runtime-readonly
 GBRAIN_VERIFY_SINCE=10m npm run verify:gbrain -- --railway-current
+npm run verify:gbrain -- --gbrain-install-readonly
+npm run verify:gbrain -- --dead-jobs-readonly
 ```
 
-The local mode reads this repository, local CLI versions, and safe health
-summaries. It does not inspect Railway variables and does not mutate local
-GBrain sources.
-
-The runtime-readonly mode SSHes into only the target service and prints
-redacted diagnostics: versions, safe OpenClaw config metadata, config
-validation, MCP/plugin discovery, fast GBrain health, job supervisor status,
-dead-job summary, cron file names, and the direct-minions process count. It
-does not print environment variables or token values.
-
-The railway-current mode checks the same target service and summarizes recent
-risk logs from `GBRAIN_VERIFY_SINCE` (default `10m`). Use it to distinguish old
-historical blockers from newly recurring runtime issues.
-
-## Safe Railway Verification
-
-Run only when Railway CLI is authenticated:
+Direct runtime smoke checks:
 
 ```bash
-GBRAIN_VERIFY_TMPDIR=/private/tmp npm run verify:gbrain -- --railway
+railway ssh --project fbdb217b-060f-4f1e-8697-08a6288a19c4 \
+  --environment production \
+  --service 6f333a2b-07d9-4219-8531-3b96fbc6a2f9 \
+  "env HOME=/data GBRAIN_HOME=/data BRAIN_REPO=/data/brain BUN_INSTALL=/data/.bun PATH=/data/.bun/bin:/app/node_modules/.bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin /data/.bun/bin/gbrain query astack --limit 5 --expand false --detail high"
+
+railway ssh --project fbdb217b-060f-4f1e-8697-08a6288a19c4 \
+  --environment production \
+  --service 6f333a2b-07d9-4219-8531-3b96fbc6a2f9 \
+  "env HOME=/data GBRAIN_HOME=/data BRAIN_REPO=/data/brain BUN_INSTALL=/data/.bun PATH=/data/.bun/bin:/app/node_modules/.bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin /app/node_modules/.bin/openclaw mcp list"
 ```
 
-The Railway mode creates a temporary CLI link under the configured temp
-directory, targets only service ID `6f333a2b-07d9-4219-8531-3b96fbc6a2f9`, and
-reads service status, deployment history, and filtered runtime logs. It refuses
-the forbidden service ID and does not read variables.
+## Rollback Notes
 
-The `GBRAIN_VERIFY_TMPDIR` prefix keeps Railway's temporary link inside a
-Codex-writable scratch directory on macOS. In a normal shell this can be omitted
-if `/tmp` and your default temp directory are writable.
+Runtime deployment rollback target:
 
-## Upgrade Gate
+- Previous stable deployment: `a55d9794-0ecb-4ff9-8bd4-ce9462381c41`
 
-Do not bump `overrides.openclaw` or runtime GBrain in production directly.
+GBrain runtime backups:
 
-Minimum gate before upgrade:
+- `/data/.gbrain-upgrade-backups/20260503T165639Z-1854eef0373340394ae8d784b533810b75243a73`
+- `/data/.gbrain-upgrade-backups/20260503T170450Z-activate-1854eef0373340394ae8d784b533810b75243a73`
+- `/data/.gbrain-upgrade-backups/wrapper-home-fix-20260503T171152Z`
 
-1. Build in staging or an equivalent disposable container.
-2. Verify the AlphaClaw process patch still applies.
-3. Verify `openclaw config validate`, `openclaw skills list`, and
-   `openclaw mcp list`.
-4. Verify GBrain doctor, schema, embeddings, graph, sources, jobs, and sync.
-5. Verify no fresh `token_mismatch` loop or session-store storm appears.
-6. Run a real OpenClaw-to-GBrain canary only after approval.
-7. Record rollback to deployment `a55d9794-0ecb-4ff9-8bd4-ce9462381c41`.
+OpenClaw config backups created during MCP work:
 
-## PASS Criteria
+- `/data/.openclaw/openclaw.json.bak.codex-gbrain-mcp-20260503T173756Z`
+- `/data/.openclaw/openclaw.json.bak.codex-gbrain-plugin-20260503T173655Z`
+- `/data/.openclaw/openclaw.json.bak.codex-gbrain-plugin-20260503T173644Z`
 
-Only call the system ready when all of these have evidence:
+To remove only the direct GBrain MCP entry:
 
-- GBrain upstream commit and version are pinned.
-- Tool repo, content brain, local repo, runtime repo, and Railway volume state
-  are explicitly separated.
-- Runtime GBrain is current or pinned with a documented compatibility reason.
-- Local GBrain is not schema-risky against the active DB.
-- OpenClaw can call GBrain in the intended agent flow.
-- GBrain doctor is green, or all warnings are documented and accepted.
-- Sources, sync, dirty/untracked Markdown indexing, embeddings, graph, links,
-  timeline, jobs, and queries work with evidence.
-- Direct-minions scheduler is active and not causing OpenClaw session churn.
-- Remote MCP/security posture matches upstream guidance before exposure.
-- No secrets are printed or committed.
-- The NIKIN production service remains untouched.
+```bash
+railway ssh --project fbdb217b-060f-4f1e-8697-08a6288a19c4 \
+  --environment production \
+  --service 6f333a2b-07d9-4219-8531-3b96fbc6a2f9 \
+  "env HOME=/data PATH=/data/.bun/bin:/app/node_modules/.bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin /app/node_modules/.bin/openclaw mcp unset gbrain"
+```
+
+## Operating Notes
+
+- Treat `/data/gbrain` as the GBrain tool repo.
+- Treat `/data/brain`, `/data/sources`, and the Postgres database as content
+  brain state.
+- Treat `/Users/arshya/Desktop/AI.nosync/openclaw-railway-template` as the
+  deployable runtime template repo.
+- Treat `/Users/arshya/Desktop/AI.nosync/astack` as the local evidence/report
+  workspace, not the runtime repo.
+- Do not expose remote HTTP MCP, OAuth clients, tunnels, webhooks, or new cron
+  entries without a new written guardrail pass.
