@@ -39,7 +39,8 @@ Forbidden non-target service:
 | OpenClaw MCP config | `gbrain` stdio MCP configured via `/data/.bun/bin/gbrain serve` | `PASS` |
 | MCP smoke | Client listed `41` tools, including `search`, `query`, `get_page` | `PASS` |
 | OpenClaw agent canary | Final run `926ca872-5d8c-4803-aa13-d2d8bab5f42c`, `status=ok`, used `gbrain__query`, `gbrain__search`, and `gbrain__list_pages` with no fallback | `PASS` |
-| Runtime logs | Last 10m after final canary: `current_total_lines=2`, `token_mismatch=0`, `sessions_store=0`, `rate_limit=0` | `PASS` |
+| Broad MCP canary | Run `b8e37a51-2e74-408a-8562-05be43d695fc`, `status=ok`, used `gbrain__get_health`, `gbrain__get_stats`, `gbrain__search`, `gbrain__get_page`, `gbrain__get_links`, `gbrain__get_backlinks`, and `gbrain__get_tags`; failures `0` | `PASS` |
+| Runtime logs | Last 10m after broad canary: `current_total_lines=6`, `token_mismatch=0`, `sessions_store=0`, `rate_limit=0` | `PASS` |
 | Dirty/untracked Markdown sync | Synthetic allowlisted source indexed dirty tracked and untracked Markdown without false `up_to_date` | `PASS` |
 | Direct-minions scheduler | Process `236 node /data/.openclaw/cron/bin/direct-minions-scheduler.mjs`; active OpenClaw agent wrappers `0`; direct GBrain shell jobs `11`; queue `0 waiting, 0 active, 0 stalled` | `PASS` |
 
@@ -68,8 +69,8 @@ Forbidden non-target service:
   not running.
 - Oracle Pro final gate agreed that `PASS_WITH_CONCERNS` is defensible for this
   target, but rejected any claim of perfect/full-feature readiness until doctor
-  warnings, upstream plugin packaging, restart/soak proof, and broader MCP tool
-  coverage are addressed or waived.
+  warnings, upstream plugin packaging, and restart/soak proof are addressed or
+  waived.
 
 ## Safe Verification Commands
 
