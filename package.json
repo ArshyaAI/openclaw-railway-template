@@ -10,6 +10,7 @@
     "dev:logs": "docker compose logs -f",
     "verify:gbrain": "bash scripts/verify-gbrain-openclaw-readiness.sh",
     "check:gbrain-upstream": "node scripts/check-gbrain-upstream.mjs",
+    "test:openclaw-agent-job": "bash scripts/test-openclaw-agent-job.sh",
     "canary:gbrain": "node scripts/gbrain-live-canary.mjs",
     "canary:gbrain-remote": "node scripts/gbrain-remote-mcp-canary.mjs",
     "dev:shell": "docker compose exec openclaw bash"
