@@ -18,7 +18,7 @@ No targeted command inspected, mutated, restarted, deployed, SSHed into, or tail
 
 | Bucket | Finding |
 | --- | --- |
-| Already working | OpenClaw target service healthy, GBrain `0.26.6`, stdio MCP configured, supervisor running, direct GBrain canaries previously passed, local Codex MCP present. |
+| Already working | OpenClaw target service healthy, runtime GBrain `0.26.7`, stdio MCP configured, supervisor running on the post-upgrade boot path, direct/remote/Codex GBrain canaries passed. |
 | Working but not FULL PASS | Runtime doctor remains `warnings`; scheduled shell-job health needs 24-48h observation; remote MCP is live-hardened but still carries an astack patch until upstream PR #620 lands. |
 | Missing evidence | Claude Code real toolcall is still blocked by Claude quota. |
 | Real blockers | Running direct-minions scheduler ignored `enabled:false`; this produced fresh dead shell jobs from disabled OpenClaw-agent wrapper jobs. |
@@ -29,16 +29,16 @@ No targeted command inspected, mutated, restarted, deployed, SSHed into, or tail
 
 | Workstream | Status | Evidence |
 | --- | --- | --- |
-| 1. Remote MCP hardening | live pass, upstream patch pending | Remote deployment `20fbbae5-5abd-47d5-b95a-7745a14769e6` applies the astack wrapper plus the upstream-aligned `InvalidTokenError` provider patch from PR #620. Full remote canary now passes: missing token `401`, bad token `401`, expired token `401`, revoked client denial `400`, DCR disabled `404`, admin denial `404`, CORS default-deny, log redaction, read-only write denial, tools list, and read/write/search/version/delete/restore. Upstream issue: <https://github.com/garrytan/gbrain/issues/616>. Upstream fix PR: <https://github.com/garrytan/gbrain/pull/620>. |
-| 2. Scheduler/quota fix | live patch deployed, post-slot clean, 24-48h monitoring pending | Deployment `44b4da3f-da1e-46b0-b640-d4e42ba731d8` installed the corrected astack-owned scheduler/wrapper. Runtime validate: `enabled_cron=12`, `disabled_cron=7`; scheduler startup logged `skip_disabled_startup` for all 7 disabled OpenClaw-agent wrapper jobs. A post-critical-slot watch at `2026-05-04T20:04:26Z` found no new dead shell jobs after historical job `1781`; fresh logs had 0 token mismatch, 0 session-store churn, and 0 rate-limit lines. `openclaw-agent-job.sh` now defaults to `openai/gpt-5.4` if intentionally enabled and preserves failure exit codes across no-fallback, fallback-success, and fallback-fail paths. |
+| 1. Remote MCP hardening | live pass, upstream patch pending | Remote deployment `aa3baa40-a303-4bc0-890f-99a8120cbf69` runs GBrain `0.26.7` with the astack wrapper plus the upstream-aligned `InvalidTokenError` provider patch from PR #620. Full remote canary now passes: missing token `401`, bad token `401`, expired token `401`, revoked client denial `400`, DCR disabled `404`, admin denial `404`, CORS default-deny, log redaction, read-only write denial, tools list, and read/write/search/version/delete/restore. Upstream issue: <https://github.com/garrytan/gbrain/issues/616>. Upstream fix PR: <https://github.com/garrytan/gbrain/pull/620>. |
+| 2. Scheduler/quota fix | live patch deployed, post-slot clean, 24-48h monitoring pending | Deployment `afff717e-39e4-472b-acfd-98f9fd66c505` keeps the corrected astack-owned scheduler/wrapper and hardens GBrain supervisor boot. Runtime validate: `enabled_cron=12`, `disabled_cron=7`; scheduler startup logged `skip_disabled_startup` for all 7 disabled OpenClaw-agent wrapper jobs. A post-critical-slot watch at `2026-05-04T20:04:26Z` found no new dead shell jobs after historical job `1781`; fresh logs had 0 token mismatch, 0 session-store churn, and 0 rate-limit lines. `openclaw-agent-job.sh` now defaults to `openai/gpt-5.4` if intentionally enabled and preserves failure exit codes across no-fallback, fallback-success, and fallback-fail paths. |
 | 3. Claude Code canary | blocked | `claude mcp list` shows `gbrain` connected, but `claude --print ... mcp__gbrain__get_page` returned `You've hit your limit - resets 2am (Europe/Zurich)`. |
-| 4. Doctor warnings upstream route | upstream PR open | Runtime doctor still warns on 37 shipped skill routing misses while pinned to GBrain `0.26.6`. Upstream issue: <https://github.com/garrytan/gbrain/issues/617>. Fix PR: <https://github.com/garrytan/gbrain/pull/619>. In the upstream worktree, the PR makes `resolver_health` `ok` and `routing-eval` 58/58. |
-| 5. Update flow automation | pass with version drift concern | Added `npm run check:gbrain-upstream`. It checks upstream SHA/package version, Docker/verifier pins, local checkout, and runtime SHA/version. Current output warns because upstream master is now `058fe695756ed16e43916d907af3845338430156` / `0.26.7`, while Docker/verifier pins remain `9e2093fc9bb6cb46520e58b0c95b807e788d9606` and runtime remains GBrain `0.26.6`. Upgrade remains approval-gated. |
+| 4. Doctor warnings upstream route | upstream PR open | Runtime doctor still warns on 37 shipped skill routing misses on GBrain `0.26.7`; full doctor also reports source frontmatter warnings. Upstream issue: <https://github.com/garrytan/gbrain/issues/617>. Fix PR: <https://github.com/garrytan/gbrain/pull/619>. In the upstream worktree, the PR makes `resolver_health` `ok` and `routing-eval` 58/58. |
+| 5. Update flow automation | runtime/pins pass, local checkout warning | `npm run check:gbrain-upstream` now passes runtime SHA/version, Docker pin, verifier pin, and local origin against upstream `058fe695756ed16e43916d907af3845338430156` / `0.26.7`. It still warns that `/Users/arshya/gbrain` is a custom dirty local checkout with package `0.26.6`; this was not overwritten. Runtime upgrade executed with backup `/data/backups/gbrain-runtime-upgrade/2026-05-04T22-19-01-337Z`. |
 | 6. Remote MCP product interface | live pass with upstream concern | astack keeps upstream `gbrain serve --http`, owns the Railway deploy/env/token policy/canary/rollback layer, and now has live OAuth-backed canary evidence on `gbrain-remote-mcp`. The only remaining concern is that the InvalidTokenError provider fix is astack-applied until PR #620 is landed or consumed upstream. |
 
 ## Completion Audit Snapshot
 
-Checked at `2026-05-04T22:14:57Z`. Result: `NOT_FULL_PASS`.
+Checked at `2026-05-04T22:48:17Z`. Result: `NOT_FULL_PASS`.
 
 | Requirement | Evidence | Status |
 | --- | --- | --- |
@@ -47,17 +47,17 @@ Checked at `2026-05-04T22:14:57Z`. Result: `NOT_FULL_PASS`.
 | Remote MCP uses upstream `gbrain serve --http`, not a custom gateway | `services/gbrain-remote-mcp/start-gbrain-http.mjs` launches upstream HTTP serve with environment hardening and a temporary safety patch. | pass with concern |
 | Upstream GBrain owns core resolver/auth behavior | PR #619 and PR #620 are open and mergeable, not merged. | blocked |
 | Scheduler no longer creates OpenClaw agent-wrapper sessions for migrated jobs | Runtime validate reports `enabled_agent_wrapper_count=0`; disabled wrapper jobs remain disabled. | pass |
-| Scheduler quota/cooldown fix has enough burn-in | Gate runner reports only `2.1h/24h` burn-in complete, with no new dead jobs so far. | blocked |
+| Scheduler quota/cooldown fix has enough burn-in | Gate runner reports only `2.7h/24h` burn-in complete, with no new dead jobs so far. | blocked |
 | Claude Code accesses the shared GBrain with a real tool call | `claude mcp list` is connected, but `npm run canary:gbrain-claude` returns `BLOCKED_QUOTA` / `429` until 2am Europe/Zurich. | blocked |
 | Codex accesses the shared GBrain with real tool calls | `npm run canary:gbrain-codex` passed health, search, put/get, delete, and restore against the shared GBrain MCP. | pass |
-| Runtime GBrain doctor is `ok` | Runtime `gbrain doctor --fast --json` still reports `warnings` from 37 resolver routing misses on GBrain `0.26.6`. | blocked |
-| Latest safe GBrain version is used or explicitly pinned | `npm run check:gbrain-upstream -- --json` reports upstream master `058fe695756ed16e43916d907af3845338430156` / `0.26.7`; runtime is `f79cad0...` / `0.26.6`; Docker/verifier pins remain `9e2093...`. | blocked |
-| Local GBrain checkout is safe to update | `/Users/arshya/gbrain` is on `codex-gbrain-0.26.6-runtime-patches` with a dirty `src/cli.ts`; do not overwrite it during this sprint. | blocked |
+| Runtime GBrain doctor is `ok` | Runtime `gbrain doctor --fast --json` still reports `warnings` from 37 resolver routing misses on GBrain `0.26.7`; full doctor also reports source frontmatter warnings. | blocked |
+| Latest safe GBrain version is used or explicitly pinned | Runtime GBrain, Remote MCP Docker pin, and verifier pin now match upstream `058fe695756ed16e43916d907af3845338430156` / `0.26.7`. | pass |
+| Local GBrain checkout is safe to update | `/Users/arshya/gbrain` is on `codex-gbrain-0.26.6-runtime-patches` with a dirty mode-only `src/cli.ts` change; it was intentionally not overwritten. | warning |
 | Runtime health has no current session/token/rate-limit storm | `GBRAIN_VERIFY_SINCE=30m npm run verify:gbrain -- --railway-current` reports current total/token/session/rate-limit lines all `0`. | pass |
 | Secrets not committed or printed in durable artifacts | PCRE2 scan over report, fixture script, package.json, and remote canary script returns no token/DB/API-key matches. | pass |
 | Forbidden NIKIN production service untouched | No targeted command inspected/mutated/restarted/deployed/SSHed/logged the forbidden service; fixture script refuses its service ID with exit `2`. | pass |
 
-Conclusion: AStack has a working and useful dogfood layer, including live Remote MCP/OAuth. FULL PASS remains blocked by upstream PR landing/consumption, Claude quota reset, scheduler burn-in, and approval-gated GBrain runtime upgrade.
+Conclusion: AStack has a working and useful dogfood layer, including live Remote MCP/OAuth and runtime GBrain `0.26.7`. FULL PASS remains blocked by upstream PR landing/consumption, Claude quota reset, scheduler burn-in, and doctor warnings.
 
 ## Changes Made
 
@@ -75,6 +75,7 @@ Conclusion: AStack has a working and useful dogfood layer, including live Remote
   - Covers primary failure without fallback, fallback success, and fallback failure.
 - Updated `patches/start-astack.sh`.
   - Installs the astack-owned direct-minions runtime scripts into `/data/.openclaw/cron/bin` at boot, backing up changed files first.
+  - Starts the GBrain supervisor with an explicit `--cli-path /data/.bun/bin/gbrain`, required by GBrain `0.26.7` detached supervisor startup.
 - Updated Remote MCP wrapper patch.
   - Adds a `/mcp` auth error handler that redacts auth failures and returns `401/403`.
   - Wraps the async `/mcp` handler in `try/catch next(err)` before the error middleware.
@@ -90,15 +91,17 @@ Conclusion: AStack has a working and useful dogfood layer, including live Remote
   - Defaults to plan mode.
   - Requires `GBRAIN_RUNTIME_UPGRADE_APPROVED=openclaw-gbrain-runtime-upgrade` for runtime mutation.
   - Captures a backup path, target SHA, expected impact, rollback, and required post-upgrade canaries.
+  - Stops and restarts the GBrain supervisor with an explicit CLI path during future guarded runtime upgrades.
 - Added `scripts/gbrain-claude-code-canary.sh` and npm script `canary:gbrain-claude`.
   - Runs the required Claude Code shared-GBrain get/search/write/delete/restore canary.
   - Returns machine-readable `BLOCKED_QUOTA` on Claude 429 instead of failing ambiguously.
 - Added `scripts/gbrain-codex-canary.sh` and npm script `canary:gbrain-codex`.
   - Runs a local Codex shared-GBrain MCP canary for health, search, put/get, delete, and restore.
-  - Uses a GBrain-only Codex phase for health/search/write/get, then the normal local Codex policy for delete/restore/get because that is the policy users actually dogfood.
+  - Uses a GBrain-only Codex phase for health/search/write/get, then an explicitly approval-bypassed noninteractive Codex phase for delete/restore/get against only the reversible canary slug.
 - Added `scripts/verify-gbrain-full-pass-gates.mjs` and npm script `verify:gbrain-full-pass-gates`.
   - Aggregates the remaining FULL PASS gates into one machine-readable result.
   - Exits non-zero until Claude canary, scheduler burn-in, upstream PRs, and upgrade gates pass.
+  - Treats runtime/pin drift as blocking, but local custom checkout drift as a warning once runtime and durable pins match upstream.
 - Extended `scripts/verify-gbrain-openclaw-readiness.sh` with scheduler validation and enabled-agent-wrapper count.
 
 ## Command Evidence
@@ -254,19 +257,18 @@ tail -80 /data/.openclaw/cron/direct-minions/logs/scheduler.log
 
 ```bash
 npm run check:gbrain-upstream -- --json
-# checked at 2026-05-04T21:34:32Z
+# checked at 2026-05-04T22:40:52Z
 # status=WARN
 # upstream sha/package: 058fe695756ed16e43916d907af3845338430156 / 0.26.7
-# docker/verifier pins: 9e2093fc9bb6cb46520e58b0c95b807e788d9606 / 0.26.6 lineage
-# runtime version 0.26.6
-# warning: runtime checkout SHA f79cad0d... and runtime version 0.26.6 differ from upstream
-# warning: local checkout /Users/arshya/gbrain is dirty on codex-gbrain-0.26.6-runtime-patches
+# docker/verifier pins: 058fe695756ed16e43916d907af3845338430156
+# runtime version 0.26.7 at 058fe695756ed16e43916d907af3845338430156
+# warning only: local checkout /Users/arshya/gbrain remains dirty/custom at package 0.26.6
 ```
 
 ```bash
 npm run upgrade:gbrain-runtime -- --json
 # plan only; no runtime mutation
-# checked at 2026-05-04T21:30:52Z
+# checked at 2026-05-04T22:18:53Z
 # target service=openclaw-railway-template (6f333a2b-07d9-4219-8531-3b96fbc6a2f9)
 # current runtime=gbrain 0.26.6 at f79cad0d45147b35d429ce94e6c81be3716d552e
 # target upstream=058fe695756ed16e43916d907af3845338430156
@@ -283,6 +285,31 @@ npm run upgrade:gbrain-runtime -- --execute --json
 ```
 
 ```bash
+GBRAIN_RUNTIME_UPGRADE_APPROVED=openclaw-gbrain-runtime-upgrade \
+  npm run upgrade:gbrain-runtime -- --execute --json
+# checked at 2026-05-04T22:19:01Z
+# status=EXECUTED
+# old_sha=f79cad0d45147b35d429ce94e6c81be3716d552e
+# old_version=gbrain 0.26.6
+# new_sha=058fe695756ed16e43916d907af3845338430156
+# new_version=gbrain 0.26.7
+# backup_dir=/data/backups/gbrain-runtime-upgrade/2026-05-04T22-19-01-337Z
+# doctor still status=warnings: resolver routing misses and source frontmatter warnings
+```
+
+```bash
+railway up --project fbdb217b-060f-4f1e-8697-08a6288a19c4 \
+  --environment production \
+  --service 6f333a2b-07d9-4219-8531-3b96fbc6a2f9 \
+  --detach \
+  --message "harden gbrain runtime upgrade supervisor path"
+# deployment afff717e-39e4-472b-acfd-98f9fd66c505
+# status SUCCESS
+# post-deploy runtime-readonly: GBrain 0.26.7, supervisor running pid=95
+# last_start=2026-05-04T22:28:40.142Z, enabled_agent_wrapper_count=0
+```
+
+```bash
 npm run canary:gbrain
 # status=PASS
 # pages, tags, links/backlinks/graph, timeline, raw data, chunks, search/query,
@@ -291,7 +318,8 @@ npm run canary:gbrain
 
 ```bash
 npm run verify:gbrain -- --runtime-readonly
-# OpenClaw 2026.5.2, GBrain 0.26.6
+# checked at 2026-05-04T22:28:40Z after deployment afff717e-39e4-472b-acfd-98f9fd66c505
+# OpenClaw 2026.5.2, GBrain 0.26.7
 # gbrain supervisor running, crashes_24h=0
 # queue health: 0 waiting, 0 active, 0 stalled
 # direct-minions scheduler validate: enabled_cron=12, disabled_cron=7
@@ -383,6 +411,46 @@ grep -n "fallback_err_file\\|OPENCLAW_AGENT_JOB_DATA_HOME\\|fallback_status\\|op
 ```
 
 ```bash
+railway up --project fbdb217b-060f-4f1e-8697-08a6288a19c4 \
+  --environment production \
+  --service beab847a-12bb-499e-a44c-bf5d1982924f \
+  --detach \
+  --message "pin gbrain remote mcp to upstream 0.26.7"
+# first attempt from repo root created deployment 60687c4e-72ae-49ee-a35e-cb1c83406b43
+# status FAILED because it used the root OpenClaw Dockerfile and /health never became healthy
+# previous remote deployment 20fbbae5-5abd-47d5-b95a-7745a14769e6 remained SUCCESS/active
+```
+
+```bash
+cd services/gbrain-remote-mcp
+railway up --project fbdb217b-060f-4f1e-8697-08a6288a19c4 \
+  --environment production \
+  --service beab847a-12bb-499e-a44c-bf5d1982924f \
+  --detach \
+  --message "pin gbrain remote mcp to upstream 0.26.7"
+# deployment aa3baa40-a303-4bc0-890f-99a8120cbf69
+# status SUCCESS
+```
+
+```bash
+railway logs --service beab847a-12bb-499e-a44c-bf5d1982924f \
+  --environment production --lines 80
+# GBrain MCP Server v0.26.7
+# Admin Token: suppressed in Railway logs
+# DCR: disabled
+```
+
+```bash
+npm run canary:gbrain-remote-fixture
+# checked after remote deployment aa3baa40-a303-4bc0-890f-99a8120cbf69
+# status=PASS
+# exposed_tool_count=38
+# missing/bad/expired token=401, revoked client=400, DCR/admin=404
+# CORS default-deny, log-redaction, read-only write denial,
+# read/write/search/version/delete/restore all pass
+```
+
+```bash
 # upstream GBrain worktree: /tmp/gbrain-resolver-routing-fix
 bun run src/cli.ts doctor --fast --json | jq '.checks[] | select(.name=="resolver_health")'
 # resolver_health status=ok, message="39 skills, all reachable"
@@ -428,16 +496,12 @@ codex mcp list
 # gbrain: /Users/arshya/.bun/bin/gbrain serve - enabled
 
 npm run canary:gbrain-codex
-# checked at 2026-05-04T22:14:57Z through the full-pass gate runner
+# checked at 2026-05-04T22:48:17Z through the full-pass gate runner
 # status=PASS
 # health_seen=true, search_seen=true, sentinel_seen=true, delete_restore_seen=true
 # proves local Codex can use the same shared GBrain via MCP, not only list it
-# note: the required sentinel is verified after restore; the pre-delete
-# get_page can be cancelled by Codex noninteractive safety without blocking
-# the canary because post-restore get_page proves write + restore.
-# note: script uses two Codex exec phases so unrelated remote MCP OAuth failures
-# do not make health/search/write flaky while delete/restore still uses
-# the real local Codex policy.
+# note: delete/restore phase uses Codex noninteractive approval bypass, scoped
+# by prompt to a single reversible canary slug and no shell/file edits.
 ```
 
 ```bash
@@ -477,14 +541,14 @@ npm run canary:gbrain-claude
 
 ```bash
 npm run verify:gbrain-full-pass-gates -- --skip-claude --json
-# checked at 2026-05-04T22:14:57Z
+# checked at 2026-05-04T22:48:17Z
 # status=BLOCKED
 # PASS: openclaw_runtime_risk_logs
 # PASS: codex_shared_gbrain_canary
+# WARN: update_flow_currentness runtime and durable pins match upstream, local checkout custom/dirty
 # BLOCKED: upstream_pr_619_resolver open/mergeable
 # BLOCKED: upstream_pr_620_http_auth open/mergeable
-# BLOCKED: update_flow_currentness runtime/pins behind upstream 0.26.7
-# BLOCKED: scheduler_dead_jobs_burn_in 2.1h/24h complete, no new dead jobs so far
+# BLOCKED: scheduler_dead_jobs_burn_in 2.7h/24h complete, no new dead jobs so far
 # Claude gate evaluated separately with npm run canary:gbrain-claude:
 # BLOCKED_QUOTA until 2am Europe/Zurich
 ```
@@ -493,15 +557,22 @@ npm run verify:gbrain-full-pass-gates -- --skip-claude --json
 
 OpenClaw target rollback:
 
-1. Roll Railway service `openclaw-railway-template` back from `44b4da3f-da1e-46b0-b640-d4e42ba731d8` to the previous known-good deployment `4d70fc17-3642-47f4-bc88-92855c76c063`.
+1. Roll Railway service `openclaw-railway-template` back from `afff717e-39e4-472b-acfd-98f9fd66c505` to the previous known-good deployment `44b4da3f-da1e-46b0-b640-d4e42ba731d8`.
 2. If a full scheduler revert is needed, roll further back to `8f4b1abf-15d0-4052-87e2-348e1555d282`.
 3. Or restore the runtime backups created by `start-astack.sh` under:
    - `/data/.openclaw/cron/bin/direct-minions-scheduler.mjs.bak.astack-*`
    - `/data/.openclaw/cron/bin/openclaw-agent-job.sh.bak.astack-*`
+4. To roll back only the GBrain runtime upgrade, use the recorded runtime backup:
+   - `cd /data/gbrain && git checkout f79cad0d45147b35d429ce94e6c81be3716d552e`
+   - `bun install --frozen-lockfile`
+   - `/data/.bun/bin/gbrain init --migrate-only --json`
+   - `/data/.bun/bin/gbrain apply-migrations --yes --non-interactive`
+   - `/data/.bun/bin/gbrain doctor --json`
+   - backup artifacts: `/data/backups/gbrain-runtime-upgrade/2026-05-04T22-19-01-337Z`
 
 Remote MCP rollback:
 
-- Roll Railway service `gbrain-remote-mcp` back from `20fbbae5-5abd-47d5-b95a-7745a14769e6` to previous known-good deployment `1d3d944a-23ee-4914-807e-ac65908b8f4b`.
+- Roll Railway service `gbrain-remote-mcp` back from `aa3baa40-a303-4bc0-890f-99a8120cbf69` to previous known-good deployment `20fbbae5-5abd-47d5-b95a-7745a14769e6`.
 - If remote MCP exposure must be stopped immediately, pause/remove only `gbrain-remote-mcp`; do not roll back the whole Railway project and do not touch `openclaw-railway-template`.
 
 ## Remaining FULL PASS Gates
@@ -509,5 +580,5 @@ Remote MCP rollback:
 1. Re-run Claude Code real MCP canary after quota reset.
 2. Observe 24-48h that no new dead shell jobs are created from disabled OpenClaw-agent wrapper jobs or model cooldown.
 3. Land or consume upstream GBrain PR #619 so runtime doctor can move from shipped resolver warnings to `ok`.
-4. Decide and run the approval-gated GBrain upgrade path from runtime `0.26.6` to latest safe upstream `0.26.7+` after backup, migrations, full doctor, and direct/OpenClaw/remote/local canaries.
-5. Land or consume upstream GBrain PR #620 so invalid/expired MCP bearer tokens return clean OAuth auth failures from upstream, not only from the astack wrapper; until then, status remains `PASS_WITH_CONCERNS`, not FULL PASS.
+4. Land or consume upstream GBrain PR #620 so invalid/expired MCP bearer tokens return clean OAuth auth failures from upstream, not only from the astack wrapper; until then, status remains `PASS_WITH_CONCERNS`, not FULL PASS.
+5. Decide whether to update the local custom checkout `/Users/arshya/gbrain` from package `0.26.6` to `0.26.7`; it is intentionally preserved because it is a custom dirty branch.

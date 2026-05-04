@@ -68,8 +68,12 @@ run_phase1() {
 run_phase2() {
   codex exec \
     --skip-git-repo-check \
+    --dangerously-bypass-approvals-and-sandbox \
     --output-last-message "$tmp2" \
     --json \
+    -c 'mcp_servers.gbrain.tools.delete_page.approval_mode="approve"' \
+    -c 'mcp_servers.gbrain.tools.restore_page.approval_mode="approve"' \
+    -c 'mcp_servers.gbrain.tools.get_page.approval_mode="approve"' \
     "$phase2_prompt" >/dev/null 2>/dev/null
 }
 

@@ -82,7 +82,12 @@ async function checkUpdateFlow() {
   if (payload.status === 'PASS') {
     return { status: 'PASS', reason: 'runtime/local/pins match upstream', evidence: summarizeUpdate(payload) };
   }
-  return { status: 'BLOCKED', reason: 'GBrain runtime/pins still behind latest upstream; approval-gated upgrade remains pending', evidence: summarizeUpdate(payload) };
+  const warnings = payload.warnings || [];
+  const hardWarnings = warnings.filter((warning) => !warning.startsWith('local_'));
+  if (!hardWarnings.length) {
+    return { status: 'WARN', reason: 'runtime and pins match upstream; local checkout remains custom/dirty', evidence: summarizeUpdate(payload) };
+  }
+  return { status: 'BLOCKED', reason: 'GBrain runtime or durable pins still differ from latest upstream', evidence: summarizeUpdate(payload) };
 }
 
 async function checkRuntimeRiskLogs() {
