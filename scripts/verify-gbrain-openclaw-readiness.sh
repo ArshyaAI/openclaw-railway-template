@@ -7,7 +7,7 @@ TARGET_ENVIRONMENT_ID="614198f2-f7ed-4756-ae83-e0dd23943c9d"
 TARGET_SERVICE_ID="6f333a2b-07d9-4219-8531-3b96fbc6a2f9"
 TARGET_SERVICE_NAME="openclaw-railway-template"
 FORBIDDEN_SERVICE_ID="63b84308-25d7-4b03-9c23-4d0d7239728f"
-UPSTREAM_GBRAIN_SHA="d01a921e01243c326e2508c7d21eb85095f1fbe8"
+UPSTREAM_GBRAIN_SHA="9e2093fc9bb6cb46520e58b0c95b807e788d9606"
 
 usage() {
   cat <<'EOF'
@@ -117,12 +117,13 @@ run_local() {
   echo "override.openclaw=$(json_package_value 'overrides.openclaw')"
   echo "upstream.gbrain.sha=$UPSTREAM_GBRAIN_SHA"
 
-  if command -v gbrain >/dev/null 2>&1; then
+  local_gbrain="$(command -v gbrain 2>/dev/null || true)"
+  if [[ -n "$local_gbrain" && -x "$local_gbrain" ]]; then
     echo "== local gbrain =="
-    gbrain --version || true
-    gbrain doctor --fast --json || true
+    "$local_gbrain" --version || true
+    "$local_gbrain" doctor --fast --json || true
   else
-    echo "WARN local gbrain not found on PATH"
+    echo "WARN local gbrain not executable on PATH"
   fi
 
   if command -v openclaw >/dev/null 2>&1; then
@@ -443,7 +444,15 @@ git status --short | wc -l | tr -d " "
 printf "\n"
 git status --short | head -20
 printf "remote_fetch="
-git remote get-url origin 2>/dev/null || true
+remote_fetch="$(git remote get-url origin 2>/dev/null || true)"
+case "$remote_fetch" in
+  ""|"https://github.com/garrytan/gbrain.git"|"git@github.com:garrytan/gbrain.git")
+    printf "%s\n" "$remote_fetch"
+    ;;
+  *)
+    printf "REDACTED\n"
+    ;;
+esac
 printf "package_version="
 node -e "console.log(require(\"./package.json\").version)" 2>/dev/null || true
 printf "bun_version="

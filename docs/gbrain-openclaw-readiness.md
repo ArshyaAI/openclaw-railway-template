@@ -1,5 +1,10 @@
 # GBrain / OpenClaw Readiness Runbook
 
+Historical note: this runbook records an earlier 2026-05-04 checkpoint and is
+superseded by `docs/gbrain-readiness-2026-05-04.md` for the current GBrain
+`0.26.6` / AlphaClaw `0.9.13` live state. Do not use the deployment IDs,
+version table, or blockers below as current readiness evidence.
+
 Status: `PASS_WITH_CONCERNS`
 Date: 2026-05-04
 Scope: core dogfood readiness for this target service, not perfect/full-feature

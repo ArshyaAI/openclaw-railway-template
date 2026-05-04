@@ -14,19 +14,24 @@ const commandsPath = path.join(
 
 let source = fs.readFileSync(commandsPath, "utf8");
 
-if (source.includes("const { exec, execFile } = require(\"child_process\");")) {
+if (source.includes("execFile(") && source.includes("splitCliArgs")) {
   console.log("[patch-alphaclaw] process patch already applied");
   process.exit(0);
 }
 
-if (!source.includes("const { exec } = require(\"child_process\");")) {
+if (
+  !source.includes("const { exec } = require(\"child_process\");") &&
+  !source.includes("const { exec, execFile } = require(\"child_process\");")
+) {
   throw new Error("Could not find child_process import in AlphaClaw commands.js");
 }
 
-source = source.replace(
-  "const { exec } = require(\"child_process\");",
-  "const { exec, execFile } = require(\"child_process\");",
-);
+if (!source.includes("const { exec, execFile } = require(\"child_process\");")) {
+  source = source.replace(
+    "const { exec } = require(\"child_process\");",
+    "const { exec, execFile } = require(\"child_process\");",
+  );
+}
 
 const helper = String.raw`
 const splitCliArgs = (input) => {
@@ -75,40 +80,12 @@ const splitCliArgs = (input) => {
 
 `;
 
-source = source.replace(
-  "const createCommands = ({ gatewayEnv }) => {",
-  `${helper}const createCommands = ({ gatewayEnv }) => {`,
-);
-
-const oldClawCmd = [
-  "  const clawCmd = (",
-  "    cmd,",
-  "    { quiet = false, timeoutMs = 15000, killSignal = \"SIGTERM\" } = {},",
-  "  ) =>",
-  "    new Promise((resolve) => {",
-  "      if (!quiet) console.log(`[alphaclaw] Running: openclaw ${cmd}`);",
-  "      exec(",
-  "        `openclaw ${cmd}`,",
-  "        {",
-  "          env: gatewayEnv(),",
-  "          timeout: timeoutMs,",
-  "          killSignal,",
-  "        },",
-  "        (err, stdout, stderr) => {",
-  "          const result = {",
-  "            ok: !err,",
-  "            stdout: stdout.trim(),",
-  "            stderr: stderr.trim(),",
-  "            code: err?.code,",
-  "          };",
-  "          if (!quiet && !result.ok) {",
-  "            console.log(`[alphaclaw] Error: ${result.stderr.slice(0, 200)}`);",
-  "          }",
-  "          resolve(result);",
-  "        },",
-  "      );",
-  "    });",
-].join("\n");
+if (!source.includes("const splitCliArgs = (input) => {")) {
+  source = source.replace(
+    "const createCommands = ({ gatewayEnv }) => {",
+    `${helper}const createCommands = ({ gatewayEnv }) => {`,
+  );
+}
 
 const newClawCmd = [
   "  const clawCmd = (",
@@ -155,10 +132,13 @@ const newClawCmd = [
   "    });",
 ].join("\n");
 
-if (!source.includes(oldClawCmd)) {
+const clawStart = source.indexOf("  const clawCmd = (");
+const clawEnd = clawStart === -1 ? -1 : source.indexOf("\n\n  const gogCmd =", clawStart);
+
+if (clawStart === -1 || clawEnd === -1) {
   throw new Error("Could not find AlphaClaw clawCmd block to patch");
 }
 
-source = source.replace(oldClawCmd, newClawCmd);
+source = `${source.slice(0, clawStart)}${newClawCmd}${source.slice(clawEnd)}`;
 fs.writeFileSync(commandsPath, source);
 console.log("[patch-alphaclaw] replaced shell clawCmd with execFile");

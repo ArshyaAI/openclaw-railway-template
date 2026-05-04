@@ -29,6 +29,54 @@ start_cron() {
   fi
 }
 
+load_persistent_env() {
+  local env_file="/data/.env"
+
+  [ -f "$env_file" ] || return 0
+
+  local export_file
+  export_file="$(mktemp /tmp/astack-env.XXXXXX)"
+
+  if node - "$env_file" >"$export_file" <<'NODE'
+const fs = require("fs");
+const file = process.argv[2];
+
+function shellQuote(value) {
+  return `'${String(value).replace(/'/g, `'\\''`)}'`;
+}
+
+for (const rawLine of fs.readFileSync(file, "utf8").split(/\r?\n/)) {
+  const line = rawLine.trim();
+  if (!line || line.startsWith("#")) continue;
+
+  const body = line.startsWith("export ") ? line.slice(7).trim() : line;
+  const match = body.match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/);
+  if (!match) continue;
+
+  const [, key, rawValue] = match;
+  let value = rawValue.trim();
+  if (
+    (value.startsWith('"') && value.endsWith('"')) ||
+    (value.startsWith("'") && value.endsWith("'"))
+  ) {
+    value = value.slice(1, -1);
+  }
+  if (!value) continue;
+
+  console.log(`if [ -z "\${${key}:-}" ]; then export ${key}=${shellQuote(value)}; fi`);
+}
+NODE
+  then
+    # shellcheck disable=SC1090
+    . "$export_file"
+    echo "[start-astack] loaded persistent runtime environment"
+  else
+    echo "[start-astack] warning: failed to parse persistent runtime environment" >&2
+  fi
+
+  rm -f "$export_file"
+}
+
 start_gbrain_supervisor() {
   local gbrain_bin="/data/.bun/bin/gbrain"
   local gbrain_dir="/data/gbrain"
@@ -158,6 +206,7 @@ schedule_post_boot_openclaw_gbrain_mcp() {
 
 restore_persisted_crons
 start_cron
+load_persistent_env
 start_gbrain_supervisor
 configure_openclaw_gbrain_mcp
 patch_alphaclaw_gbrain_boot_config
