@@ -19,7 +19,7 @@ No command in this sprint inspected or mutated the forbidden service.
 | Bucket | Finding |
 | --- | --- |
 | Already working | OpenClaw target service healthy, GBrain `0.26.6`, stdio MCP configured, supervisor running, direct GBrain canaries previously passed, local Codex MCP present. |
-| Working but not FULL PASS | Remote MCP is fail-closed, but live bad bearer token still returns `500`; doctor remains `warnings`; scheduled shell-job health needs observation. |
+| Working but not FULL PASS | Remote MCP is fail-closed, but live bad bearer token still returns `500`; runtime doctor remains `warnings`; scheduled shell-job health needs observation. |
 | Missing evidence | Claude Code real toolcall is still blocked by Claude quota; remote expired-token/revoked-client/log-redaction negative canaries need live credentials/log sample. |
 | Real blockers | Running direct-minions scheduler ignored `enabled:false`; this produced fresh dead shell jobs from disabled OpenClaw-agent wrapper jobs. |
 | Security risks | Remote MCP must return clean auth status, keep DCR disabled, keep CORS default-deny, and avoid auth material in logs. |
@@ -236,6 +236,23 @@ bun test test/e2e/serve-http-oauth.test.ts
 
 gh pr view 620 --repo garrytan/gbrain --json number,title,state,url
 # #620 fix: return clean auth failures for invalid MCP bearer tokens [OPEN]
+```
+
+```bash
+codex mcp list
+# gbrain: /Users/arshya/.bun/bin/gbrain serve - enabled
+
+gbrain --version
+# gbrain 0.26.6
+
+gbrain doctor --json | jq '{status, health_score, warnings, errors}'
+# status=warnings, health_score=95
+# warning: resolver_health "Could not find skills directory"
+# errors=[]
+
+gbrain search "gbrain openclaw readiness" --limit 3 --json
+# search returns relevant AStack/GBrain context; command exits 0
+# note: local CLI emitted human-formatted rows despite --json on 0.26.6
 ```
 
 ```bash
