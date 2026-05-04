@@ -169,6 +169,18 @@ date -u '+%Y-%m-%dT%H:%M:%SZ' && \
 ```
 
 ```bash
+date -u '+%Y-%m-%dT%H:%M:%SZ' && \
+  GBRAIN_VERIFY_SINCE=120m npm run verify:gbrain -- --railway-current && \
+  npm run verify:gbrain -- --dead-jobs-readonly
+# checked at 2026-05-04T20:40:04Z
+# deployment 44b4da3f-da1e-46b0-b640-d4e42ba731d8 SUCCESS
+# current_token_mismatch_lines=0
+# current_sessions_store_lines=0
+# current_rate_limit_lines=0
+# latest dead jobs remain historical: 1781, 1773, 1764, 1747, 1478
+```
+
+```bash
 /Users/arshya/.oracle/bin/oracle-pro review ... --run --json
 # status=ok
 # recommendationSummary=Keep PASS_WITH_CONCERNS
