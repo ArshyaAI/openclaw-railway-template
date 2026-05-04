@@ -60,6 +60,9 @@ No targeted command inspected, mutated, restarted, deployed, SSHed into, or tail
   - Missing token, bad token, DCR disabled, CORS default-deny, admin-route denial, read-only write denial.
   - Env-backed checks for expired token, revoked client, and log redaction sample.
 - Added `scripts/check-gbrain-upstream.mjs` and npm script `check:gbrain-upstream`.
+- Added `scripts/gbrain-claude-code-canary.sh` and npm script `canary:gbrain-claude`.
+  - Runs the required Claude Code shared-GBrain get/search/write/delete/restore canary.
+  - Returns machine-readable `BLOCKED_QUOTA` on Claude 429 instead of failing ambiguously.
 - Extended `scripts/verify-gbrain-openclaw-readiness.sh` with scheduler validation and enabled-agent-wrapper count.
 
 ## Command Evidence
@@ -346,6 +349,15 @@ claude --print --output-format json --permission-mode bypassPermissions \
   --allowedTools mcp__gbrain__get_page -- "<gbrain get_page canary>"
 # checked at 2026-05-04T23:04:53+02:00
 # blocked: You've hit your limit - resets 2am (Europe/Zurich)
+```
+
+```bash
+npm run canary:gbrain-claude
+# checked at 2026-05-04T23:07:38+02:00
+# status=BLOCKED_QUOTA
+# claude_exit_code=1
+# api_error_status=429
+# message="You've hit your limit · resets 2am (Europe/Zurich)"
 ```
 
 ## Rollback
