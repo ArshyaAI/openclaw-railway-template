@@ -147,6 +147,13 @@ GBRAIN_VERIFY_SINCE=30m npm run verify:gbrain -- --railway-current
 ```
 
 ```bash
+npm run verify:gbrain -- --dead-jobs-readonly
+# checked at 2026-05-04T21:03:12Z
+# latest dead jobs remain historical: 1781, 1773, 1764, 1747, 1478
+# no new dead shell job appeared after the scheduler patch so far
+```
+
+```bash
 railway up --project fbdb217b-060f-4f1e-8697-08a6288a19c4 \
   --environment production \
   --service 6f333a2b-07d9-4219-8531-3b96fbc6a2f9 \
@@ -293,7 +300,7 @@ HOME=$(mktemp -d /tmp/gbrain-test-home.XXXXXX) \
 # 161 pass, 0 fail
 
 gh pr view 619 --repo garrytan/gbrain --json number,title,state,url
-# #619 fix: align resolver routing fixtures [OPEN]
+# #619 fix: align resolver routing fixtures [OPEN, MERGEABLE]
 ```
 
 ```bash
@@ -308,7 +315,7 @@ bun test test/e2e/serve-http-oauth.test.ts
 # skipped without DATABASE_URL; no live DB mutation during this verification
 
 gh pr view 620 --repo garrytan/gbrain --json number,title,state,url
-# #620 fix: return clean auth failures for invalid MCP bearer tokens [OPEN]
+# #620 fix: return clean auth failures for invalid MCP bearer tokens [OPEN, MERGEABLE]
 ```
 
 ```bash
