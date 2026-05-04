@@ -12,7 +12,7 @@ This is the astack-owned follow-up sprint for the remaining GBrain full-pass blo
 - Remote MCP service code: `services/gbrain-remote-mcp/`
 - GBrain upstream: `https://github.com/garrytan/gbrain`
 
-No command in this sprint inspected or mutated the forbidden service.
+No targeted command inspected, mutated, restarted, deployed, SSHed into, or tailed logs/variables for the forbidden service. A project-level `railway status --json` service listing included the forbidden service name/id while separating the approved Remote MCP target; no further forbidden-service access was performed.
 
 ## Hunt-First Diagnosis
 
@@ -237,6 +237,28 @@ date -u '+%Y-%m-%dT%H:%M:%SZ' && \
 # recommendationSummary=Keep PASS_WITH_CONCERNS
 # blockerCount=5, nonBlockerCount=5
 # key blocker fixed in this sprint: openclaw-agent-job.sh exit-status preservation
+```
+
+```bash
+/Users/arshya/.oracle/bin/oracle-pro review \
+  --slug gbrain-astack-full-pass-remote-mcp-final \
+  --risk release \
+  --intent release_gate \
+  --run --json
+# status=ok
+# recommendationSummary=Keep PASS_WITH_CONCERNS
+# blockerCount=5, nonBlockerCount=5
+# Remote MCP can now be counted as live-pass for the AStack-owned
+# Railway deployment/canary layer, but not as upstream-clean until #620 lands.
+# Remaining blockers: Claude quota, 24-48h scheduler burn-in, PR #619,
+# PR #620, and approval-gated 0.26.7+ upgrade.
+```
+
+```bash
+rg -n "gbrain_(?:cs|at|rt|code)_[A-Za-z0-9_-]+|postgres(?:ql)?://|sk-[A-Za-z0-9_-]+" \
+  docs/gbrain-full-pass-readiness-sprint-2026-05-04.md \
+  services/gbrain-remote-mcp scripts/gbrain-remote-mcp-canary.mjs
+# no committed secret matches in report or remote MCP files
 ```
 
 ```bash
