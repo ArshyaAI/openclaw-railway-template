@@ -91,6 +91,56 @@ configure_openclaw_gbrain_mcp() {
   fi
 }
 
+patch_alphaclaw_gbrain_boot_config() {
+  local alphaclaw_bin="/app/node_modules/@chrysb/alphaclaw/bin/alphaclaw.js"
+
+  if [ ! -f "$alphaclaw_bin" ]; then
+    echo "[start-astack] AlphaClaw binary missing; skipping boot config patch"
+    return 0
+  fi
+
+  node - "$alphaclaw_bin" <<'NODE'
+const fs = require("fs");
+const file = process.argv[2];
+const marker = "codexEnsureGbrainMcpBootConfig";
+let source = fs.readFileSync(file, "utf8");
+
+if (source.includes(marker)) {
+  console.log("[start-astack] AlphaClaw boot config patch already present");
+  process.exit(0);
+}
+
+const needle = "    bootRestoreConfigFromRemote();";
+if (!source.includes(needle)) {
+  console.error("[start-astack] AlphaClaw boot config patch point not found");
+  process.exit(1);
+}
+
+const patch = `
+    const codexEnsureGbrainMcpBootConfig = () => {
+      try {
+        const cfg = JSON.parse(fs.readFileSync(configPath, "utf8"));
+        if (!cfg.mcp || typeof cfg.mcp !== "object" || Array.isArray(cfg.mcp)) cfg.mcp = {};
+        if (!cfg.mcp.servers || typeof cfg.mcp.servers !== "object" || Array.isArray(cfg.mcp.servers)) cfg.mcp.servers = {};
+        cfg.mcp.servers.gbrain = { command: "/data/.bun/bin/gbrain", args: ["serve"] };
+        if (cfg.plugins?.entries && Object.hasOwn(cfg.plugins.entries, "device-pair")) {
+          delete cfg.plugins.entries["device-pair"];
+        }
+        fs.writeFileSync(configPath, JSON.stringify(cfg, null, 2) + "\\n");
+        console.log("[alphaclaw] Ensured GBrain MCP boot config");
+      } catch (e) {
+        console.log(\`[alphaclaw] GBrain MCP boot config skipped: \${String(e.message || "").slice(0, 200)}\`);
+      }
+    };
+`;
+
+source = source.replace(needle, `${patch}${needle}
+    codexEnsureGbrainMcpBootConfig();`);
+fs.writeFileSync(file, source);
+console.log("[start-astack] patched AlphaClaw boot config reconciliation");
+NODE
+}
+
 schedule_post_boot_openclaw_gbrain_mcp() {
   (
     for delay in 5 10 20 40; do
@@ -110,6 +160,7 @@ restore_persisted_crons
 start_cron
 start_gbrain_supervisor
 configure_openclaw_gbrain_mcp
+patch_alphaclaw_gbrain_boot_config
 schedule_post_boot_openclaw_gbrain_mcp
 
 exec alphaclaw start
