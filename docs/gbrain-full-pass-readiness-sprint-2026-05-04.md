@@ -51,6 +51,7 @@ Checked at `2026-05-04T21:24:30Z`. Result: `NOT_FULL_PASS`.
 | Claude Code accesses the shared GBrain with a real tool call | `claude mcp list` is connected, but `npm run canary:gbrain-claude` returns `BLOCKED_QUOTA` / `429` until 2am Europe/Zurich. | blocked |
 | Runtime GBrain doctor is `ok` | Runtime `gbrain doctor --fast --json` still reports `warnings` from 37 resolver routing misses on GBrain `0.26.6`. | blocked |
 | Latest safe GBrain version is used or explicitly pinned | `npm run check:gbrain-upstream -- --json` reports upstream master `058fe695756ed16e43916d907af3845338430156` / `0.26.7`; runtime is `f79cad0...` / `0.26.6`; Docker/verifier pins remain `9e2093...`. | blocked |
+| Local GBrain checkout is safe to update | `/Users/arshya/gbrain` is on `codex-gbrain-0.26.6-runtime-patches` with a dirty `src/cli.ts`; do not overwrite it during this sprint. | blocked |
 | Runtime health has no current session/token/rate-limit storm | `GBRAIN_VERIFY_SINCE=30m npm run verify:gbrain -- --railway-current` reports current total/token/session/rate-limit lines all `0`. | pass |
 | Secrets not committed or printed in durable artifacts | PCRE2 scan over report, fixture script, package.json, and remote canary script returns no token/DB/API-key matches. | pass |
 | Forbidden NIKIN production service untouched | No targeted command inspected/mutated/restarted/deployed/SSHed/logged the forbidden service; fixture script refuses its service ID with exit `2`. | pass |
@@ -84,6 +85,10 @@ Conclusion: AStack has a working and useful dogfood layer, including live Remote
   - Creates short-lived Remote MCP OAuth fixture clients on the approved `gbrain-remote-mcp` service, runs the full OAuth-backed remote canary, and revokes the fixtures in cleanup.
   - Refuses the forbidden NIKIN production service ID.
 - Added `scripts/check-gbrain-upstream.mjs` and npm script `check:gbrain-upstream`.
+- Added `scripts/gbrain-runtime-upgrade-gate.mjs` and npm script `upgrade:gbrain-runtime`.
+  - Defaults to plan mode.
+  - Requires `GBRAIN_RUNTIME_UPGRADE_APPROVED=openclaw-gbrain-runtime-upgrade` for runtime mutation.
+  - Captures a backup path, target SHA, expected impact, rollback, and required post-upgrade canaries.
 - Added `scripts/gbrain-claude-code-canary.sh` and npm script `canary:gbrain-claude`.
   - Runs the required Claude Code shared-GBrain get/search/write/delete/restore canary.
   - Returns machine-readable `BLOCKED_QUOTA` on Claude 429 instead of failing ambiguously.
@@ -114,6 +119,7 @@ npm run verify:gbrain -- --dead-jobs-readonly
 ```bash
 node --check scripts/gbrain-remote-mcp-canary.mjs
 node --check scripts/check-gbrain-upstream.mjs
+node --check scripts/gbrain-runtime-upgrade-gate.mjs
 node --check patches/direct-minions-scheduler.mjs
 bash -n patches/start-astack.sh
 bash -n patches/openclaw-agent-job.sh
@@ -243,12 +249,32 @@ tail -80 /data/.openclaw/cron/direct-minions/logs/scheduler.log
 
 ```bash
 npm run check:gbrain-upstream -- --json
-# checked at 2026-05-04T21:05:37Z
+# checked at 2026-05-04T21:34:32Z
 # status=WARN
 # upstream sha/package: 058fe695756ed16e43916d907af3845338430156 / 0.26.7
 # docker/verifier pins: 9e2093fc9bb6cb46520e58b0c95b807e788d9606 / 0.26.6 lineage
 # runtime version 0.26.6
 # warning: runtime checkout SHA f79cad0d... and runtime version 0.26.6 differ from upstream
+# warning: local checkout /Users/arshya/gbrain is dirty on codex-gbrain-0.26.6-runtime-patches
+```
+
+```bash
+npm run upgrade:gbrain-runtime -- --json
+# plan only; no runtime mutation
+# checked at 2026-05-04T21:30:52Z
+# target service=openclaw-railway-template (6f333a2b-07d9-4219-8531-3b96fbc6a2f9)
+# current runtime=gbrain 0.26.6 at f79cad0d45147b35d429ce94e6c81be3716d552e
+# target upstream=058fe695756ed16e43916d907af3845338430156
+# execute requires:
+# GBRAIN_RUNTIME_UPGRADE_APPROVED=openclaw-gbrain-runtime-upgrade \
+#   npm run upgrade:gbrain-runtime -- --execute --json
+```
+
+```bash
+npm run upgrade:gbrain-runtime -- --execute --json
+# checked at 2026-05-04T21:31:00Z
+# status=BLOCKED_APPROVAL_REQUIRED
+# no runtime mutation without GBRAIN_RUNTIME_UPGRADE_APPROVED=openclaw-gbrain-runtime-upgrade
 ```
 
 ```bash

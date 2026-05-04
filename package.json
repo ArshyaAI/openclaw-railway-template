@@ -11,6 +11,7 @@
     "verify:gbrain": "bash scripts/verify-gbrain-openclaw-readiness.sh",
     "verify:gbrain-full-pass-gates": "node scripts/verify-gbrain-full-pass-gates.mjs",
     "check:gbrain-upstream": "node scripts/check-gbrain-upstream.mjs",
+    "upgrade:gbrain-runtime": "node scripts/gbrain-runtime-upgrade-gate.mjs",
     "test:openclaw-agent-job": "bash scripts/test-openclaw-agent-job.sh",
     "canary:gbrain": "node scripts/gbrain-live-canary.mjs",
     "canary:gbrain-remote": "node scripts/gbrain-remote-mcp-canary.mjs",

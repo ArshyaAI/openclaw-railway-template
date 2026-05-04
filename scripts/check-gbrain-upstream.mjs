@@ -24,6 +24,8 @@ const pinnedDockerSha = readRegex('services/gbrain-remote-mcp/Dockerfile', /ARG 
 const pinnedVerifierSha = readRegex('scripts/verify-gbrain-openclaw-readiness.sh', /UPSTREAM_GBRAIN_SHA="([0-9a-f]{40})"/);
 const localHead = run(['git', ['-C', localCheckout, 'rev-parse', 'HEAD']]);
 const localOrigin = run(['git', ['-C', localCheckout, 'rev-parse', 'origin/master']]);
+const localBranch = run(['git', ['-C', localCheckout, 'branch', '--show-current']]);
+const localStatus = run(['git', ['-C', localCheckout, 'status', '--porcelain']]);
 const localPackageVersion = readJsonPackage(path.join(localCheckout, 'package.json'));
 const upstreamPackageVersion = remoteSha ? await readGitHubPackageVersion(remoteSha) : null;
 const npmPackageVersion = run(['npm', ['view', 'gbrain', 'version', '--json']]);
@@ -35,6 +37,7 @@ compare('local_origin_vs_upstream', localOrigin, remoteSha);
 if (runtime?.sha) compare('runtime_sha_vs_upstream', runtime.sha, remoteSha);
 if (runtime?.version && upstreamPackageVersion) compare('runtime_version_vs_upstream_package', normalizeVersion(runtime.version), upstreamPackageVersion);
 if (localPackageVersion && upstreamPackageVersion) compare('local_package_vs_upstream_package', localPackageVersion, upstreamPackageVersion);
+compareClean('local_worktree_clean', localStatus);
 
 const result = {
   status: warnings.length ? 'WARN' : 'PASS',
@@ -55,6 +58,9 @@ const result = {
     checkout: localCheckout,
     head: localHead,
     origin_master: localOrigin,
+    branch: localBranch,
+    dirty: Boolean(localStatus),
+    dirty_files: localStatus ? localStatus.split(/\r?\n/).filter(Boolean).slice(0, 20) : [],
     package_version: localPackageVersion,
   },
   runtime,
@@ -67,6 +73,7 @@ const result = {
     'run full doctor',
     'run direct, OpenClaw, remote MCP, and local-agent canaries',
     'rollback to recorded backup on failed doctor or canary',
+    'use npm run upgrade:gbrain-runtime for a guarded plan/execute workflow',
   ],
 };
 
@@ -159,6 +166,14 @@ function compare(name, actual, expected) {
   evidence.push({ name, actual, expected, status });
   if (status !== 'PASS') {
     warnings.push(`${name}: expected ${expected || 'unknown'}, got ${actual || 'unknown'}`);
+  }
+}
+
+function compareClean(name, statusText) {
+  const status = statusText ? 'WARN' : 'PASS';
+  evidence.push({ name, actual: statusText ? 'dirty' : 'clean', expected: 'clean', status });
+  if (status !== 'PASS') {
+    warnings.push(`${name}: expected clean, got dirty`);
   }
 }
 
