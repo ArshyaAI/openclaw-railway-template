@@ -29,7 +29,7 @@ No command in this sprint inspected or mutated the forbidden service.
 
 | Workstream | Status | Evidence |
 | --- | --- | --- |
-| 1. Remote MCP hardening | code-ready, live remote deploy blocked by target scope | Wrapper patch now maps `/mcp` auth failures to `401/403`, wraps the async `/mcp` handler with `try/catch next(err)`, and canary now hard-fails if bad token returns non-401/403. Current live remote still fails with `bad_token expected clean 401/403 auth failure, got 500`. Upstream issue: <https://github.com/garrytan/gbrain/issues/616>. |
+| 1. Remote MCP hardening | code-ready, live remote deploy blocked by target scope | Wrapper patch now maps `/mcp` auth failures to `401/403`, wraps the async `/mcp` handler with `try/catch next(err)`, and canary now hard-fails if bad token returns non-401/403. Current live remote still fails with `bad_token expected clean 401/403 auth failure, got 500`. Upstream issue: <https://github.com/garrytan/gbrain/issues/616>. Upstream fix PR: <https://github.com/garrytan/gbrain/pull/620>. |
 | 2. Scheduler/quota fix | live patch deployed, post-slot clean, 24-48h monitoring pending | Deployment `44b4da3f-da1e-46b0-b640-d4e42ba731d8` installed the corrected astack-owned scheduler/wrapper. Runtime validate: `enabled_cron=12`, `disabled_cron=7`; scheduler startup logged `skip_disabled_startup` for all 7 disabled OpenClaw-agent wrapper jobs. A post-critical-slot watch at `2026-05-04T20:04:26Z` found no new dead shell jobs after historical job `1781`; fresh logs had 0 token mismatch, 0 session-store churn, and 0 rate-limit lines. `openclaw-agent-job.sh` now defaults to `openai/gpt-5.4` if intentionally enabled and preserves failure exit codes across no-fallback, fallback-success, and fallback-fail paths. |
 | 3. Claude Code canary | blocked | `claude mcp list` shows `gbrain` connected, but `claude --print ... mcp__gbrain__get_page` returned `You've hit your limit - resets 2am (Europe/Zurich)`. |
 | 4. Doctor warnings upstream route | upstream PR open | Runtime doctor still warns on 37 shipped skill routing misses while pinned to GBrain `0.26.6`. Upstream issue: <https://github.com/garrytan/gbrain/issues/617>. Fix PR: <https://github.com/garrytan/gbrain/pull/619>. In the upstream worktree, the PR makes `resolver_health` `ok` and `routing-eval` 58/58. |
@@ -212,6 +212,21 @@ gh pr view 619 --repo garrytan/gbrain --json number,title,state,url
 ```
 
 ```bash
+# upstream GBrain worktree: /tmp/gbrain-http-auth-fix
+bun run typecheck
+# pass
+
+bun test test/oauth.test.ts
+# 42 pass, 0 fail
+
+bun test test/e2e/serve-http-oauth.test.ts
+# skipped without DATABASE_URL; no live DB mutation during this verification
+
+gh pr view 620 --repo garrytan/gbrain --json number,title,state,url
+# #620 fix: return clean auth failures for invalid MCP bearer tokens [OPEN]
+```
+
+```bash
 claude mcp list
 # gbrain: /Users/arshya/.bun/bin/gbrain serve - connected
 ```
@@ -245,4 +260,4 @@ Remote MCP rollback:
 4. Observe 24-48h that no new dead shell jobs are created from disabled OpenClaw-agent wrapper jobs or model cooldown.
 5. Land or consume upstream GBrain PR #619 so runtime doctor can move from shipped resolver warnings to `ok`.
 6. Decide and run the approval-gated GBrain upgrade path from runtime `0.26.6` to latest safe upstream `0.26.7+` after backup, migrations, full doctor, and direct/OpenClaw/remote/local canaries.
-7. Wait for or contribute upstream fix for GBrain issue #616; until then, status remains `PASS_WITH_CONCERNS`, not FULL PASS.
+7. Land or consume upstream GBrain PR #620 so invalid/expired MCP bearer tokens return clean OAuth auth failures from upstream, not only from the astack wrapper; until then, status remains `PASS_WITH_CONCERNS`, not FULL PASS.
