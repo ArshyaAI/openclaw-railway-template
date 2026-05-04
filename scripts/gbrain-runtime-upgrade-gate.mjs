@@ -132,6 +132,11 @@ function executeRemoteUpgrade(sha, backupPath) {
     'tar -C /data -czf "$backup_dir/gbrain.tgz" gbrain',
     '[ -d /data/.gbrain ] && tar -C /data -czf "$backup_dir/dot-gbrain.tgz" .gbrain || true',
     '[ -f /data/.openclaw/openclaw.json ] && cp /data/.openclaw/openclaw.json "$backup_dir/openclaw.json" || true',
+    'supervisor_was_running=0',
+    'if /data/.bun/bin/gbrain jobs supervisor status --json > "$backup_dir/supervisor-before.json" 2>&1 && grep -q \'"running"[[:space:]]*:[[:space:]]*true\' "$backup_dir/supervisor-before.json"; then',
+    '  supervisor_was_running=1',
+    '  /data/.bun/bin/gbrain jobs supervisor stop --json 2>&1 | tee "$backup_dir/supervisor-stop.json"',
+    'fi',
     'git fetch origin',
     'git checkout "$target_sha"',
     'bun install --frozen-lockfile',
@@ -139,9 +144,14 @@ function executeRemoteUpgrade(sha, backupPath) {
     '/data/.bun/bin/gbrain init --migrate-only --json 2>&1 | tee "$backup_dir/init-migrate-only.log"',
     '/data/.bun/bin/gbrain apply-migrations --yes --non-interactive 2>&1 | tee "$backup_dir/apply-migrations.log"',
     '/data/.bun/bin/gbrain doctor --json | tee "$backup_dir/doctor.json"',
-    'printf "old_sha=%s\\nold_version=%s\\nnew_sha=%s\\nbackup_dir=%s\\n" "$old_sha" "$old_version" "$(git rev-parse HEAD)" "$backup_dir"',
+    'if [ "$supervisor_was_running" = "1" ]; then',
+    '  /data/.bun/bin/gbrain jobs supervisor start --detach --json --allow-shell-jobs --cli-path /data/.bun/bin/gbrain 2>&1 | tee "$backup_dir/supervisor-start.json"',
+    '  sleep 2',
+    'fi',
+    '/data/.bun/bin/gbrain jobs supervisor status --json 2>&1 | tee "$backup_dir/supervisor-status.json"',
+    'printf "old_sha=%s\\nold_version=%s\\nnew_sha=%s\\nbackup_dir=%s\\nsupervisor_was_running=%s\\n" "$old_sha" "$old_version" "$(git rev-parse HEAD)" "$backup_dir" "$supervisor_was_running"',
   ].join('\n');
-  const text = railwaySsh(['sh -lc', quote(script)].join(' '), { timeout: 900_000 });
+  const text = railwaySsh(['bash -lc', quote(script)].join(' '), { timeout: 900_000 });
   return {
     output: redact(text),
   };

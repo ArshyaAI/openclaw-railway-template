@@ -122,7 +122,7 @@ start_gbrain_supervisor() {
   export GBRAIN_HOME=/data
   export BRAIN_REPO=/data/brain
   export BUN_INSTALL=/data/.bun
-  export PATH="/data/.bun/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
+  export PATH="/data/.bun/bin:/app/node_modules/.bin:/usr/local/bin:/usr/bin:/bin:$PATH"
 
   if "$gbrain_bin" jobs supervisor status --json >/tmp/gbrain-supervisor-status.json 2>/tmp/gbrain-supervisor-status.err; then
     echo "[start-astack] gbrain supervisor already running"
@@ -130,7 +130,7 @@ start_gbrain_supervisor() {
   fi
 
   rm -f "$pid_file"
-  if (cd "$gbrain_dir" && "$gbrain_bin" jobs supervisor start --detach --json --allow-shell-jobs); then
+  if (cd "$gbrain_dir" && "$gbrain_bin" jobs supervisor start --detach --json --allow-shell-jobs --cli-path "$gbrain_bin"); then
     echo "[start-astack] gbrain supervisor started"
   else
     echo "[start-astack] warning: failed to start gbrain supervisor" >&2
