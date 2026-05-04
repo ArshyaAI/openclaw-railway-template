@@ -1,6 +1,6 @@
 # GBrain Full-Pass Readiness Sprint - 2026-05-04
 
-Status: `PASS_WITH_CONCERNS`
+Status: `PASS_WITH_CONCERNS` (`FULL_PASS_BLOCKED`)
 
 This is the astack-owned follow-up sprint for the remaining GBrain full-pass blockers. It continues from `docs/gbrain-resume-readiness-2026-05-04.md` and does not reset the earlier evidence.
 
@@ -29,7 +29,7 @@ No targeted command inspected, mutated, restarted, deployed, SSHed into, or tail
 
 | Workstream | Status | Evidence |
 | --- | --- | --- |
-| 1. Remote MCP hardening | live pass, upstream patch pending | Remote deployment `aa3baa40-a303-4bc0-890f-99a8120cbf69` runs GBrain `0.26.7` with the astack wrapper plus the upstream-aligned `InvalidTokenError` provider patch from PR #620. Full remote canary now passes: missing token `401`, bad token `401`, expired token `401`, revoked client denial `400`, DCR disabled `404`, admin denial `404`, CORS default-deny, log redaction, read-only write denial, tools list, and read/write/search/version/delete/restore. Upstream issue: <https://github.com/garrytan/gbrain/issues/616>. Upstream fix PR: <https://github.com/garrytan/gbrain/pull/620>. |
+| 1. Remote MCP hardening | live pass, upstream patch pending | Remote deployment `aa3baa40-a303-4bc0-890f-99a8120cbf69` runs GBrain `0.26.7` with the astack wrapper plus the upstream-aligned `InvalidTokenError` provider patch from PR #620. Full remote canary now passes and is part of `verify:gbrain-full-pass-gates`: missing token `401`, bad token `401`, expired token `401`, revoked client denial `400`, DCR disabled `404`, admin denial `404`, CORS default-deny, log redaction, read-only write denial, tools list, read/write/search/version/delete/restore, and OAuth fixture client revocation. Upstream issue: <https://github.com/garrytan/gbrain/issues/616>. Upstream fix PR: <https://github.com/garrytan/gbrain/pull/620>. |
 | 2. Scheduler/quota fix | live patch deployed, post-slot clean, 24-48h monitoring pending | Deployment `afff717e-39e4-472b-acfd-98f9fd66c505` keeps the corrected astack-owned scheduler/wrapper and hardens GBrain supervisor boot. Runtime validate: `enabled_cron=12`, `disabled_cron=7`; scheduler startup logged `skip_disabled_startup` for all 7 disabled OpenClaw-agent wrapper jobs. A post-critical-slot watch at `2026-05-04T20:04:26Z` found no new dead shell jobs after historical job `1781`; fresh logs had 0 token mismatch, 0 session-store churn, and 0 rate-limit lines. `openclaw-agent-job.sh` now defaults to `openai/gpt-5.4` if intentionally enabled and preserves failure exit codes across no-fallback, fallback-success, and fallback-fail paths. |
 | 3. Claude Code canary | blocked | `claude mcp list` shows `gbrain` connected, but `claude --print ... mcp__gbrain__get_page` returned `You've hit your limit - resets 2am (Europe/Zurich)`. |
 | 4. Doctor warnings upstream route | upstream PR open | Runtime doctor still warns on 37 shipped skill routing misses on GBrain `0.26.7`; full doctor also reports source frontmatter warnings. Upstream issue: <https://github.com/garrytan/gbrain/issues/617>. Fix PR: <https://github.com/garrytan/gbrain/pull/619>. In the upstream worktree, the PR makes `resolver_health` `ok` and `routing-eval` 58/58. |
@@ -38,18 +38,18 @@ No targeted command inspected, mutated, restarted, deployed, SSHed into, or tail
 
 ## Completion Audit Snapshot
 
-Checked at `2026-05-04T22:48:17Z`. Result: `NOT_FULL_PASS`.
+Checked at `2026-05-04T23:03:20Z`. Result: `NOT_FULL_PASS`.
 
 | Requirement | Evidence | Status |
 | --- | --- | --- |
-| Remote MCP bad/missing/expired bearer tokens return clean auth failures | `npm run canary:gbrain-remote-fixture` passed: missing token `401`, bad token `401`, expired token `401`, revoked client denial `400`. | pass in astack, upstream patch pending |
+| Remote MCP bad/missing/expired bearer tokens return clean auth failures | `npm run verify:gbrain-full-pass-gates -- --skip-claude --skip-codex --json` now includes `remote_mcp_oauth_fixture_canary`, which passed: missing token `401`, bad token `401`, expired token `401`, revoked client denial `400`, and fixture clients revoked. | pass in astack, upstream patch pending |
 | Remote MCP DCR, admin route, CORS, log-redaction, scoped write denial covered | Fixture canary passed DCR disabled `404`, admin denial `404`, CORS default-deny, log redaction, and read-only write denial. | pass |
 | Remote MCP uses upstream `gbrain serve --http`, not a custom gateway | `services/gbrain-remote-mcp/start-gbrain-http.mjs` launches upstream HTTP serve with environment hardening and a temporary safety patch. | pass with concern |
 | Upstream GBrain owns core resolver/auth behavior | PR #619 and PR #620 are open and mergeable, not merged. | blocked |
 | Scheduler no longer creates OpenClaw agent-wrapper sessions for migrated jobs | Runtime validate reports `enabled_agent_wrapper_count=0`; disabled wrapper jobs remain disabled. | pass |
-| Scheduler quota/cooldown fix has enough burn-in | Gate runner reports only `2.7h/24h` burn-in complete, with no new dead jobs so far. | blocked |
+| Scheduler quota/cooldown fix has enough burn-in | Gate runner reports only `3.0h/24h` burn-in complete, with no new dead jobs so far. | blocked |
 | Claude Code accesses the shared GBrain with a real tool call | `claude mcp list` is connected, but `npm run canary:gbrain-claude` returns `BLOCKED_QUOTA` / `429` until 2am Europe/Zurich. | blocked |
-| Codex accesses the shared GBrain with real tool calls | `npm run canary:gbrain-codex` passed health, search, put/get, delete, and restore against the shared GBrain MCP. | pass |
+| Codex accesses the shared GBrain with real tool calls | `npm run canary:gbrain-codex` passed health, search, put/get, delete, and restore against the shared GBrain MCP; the full-pass gate also passed `codex_shared_gbrain_canary` at `2026-05-04T23:00:42Z`. | pass |
 | Runtime GBrain doctor is `ok` | Runtime `gbrain doctor --fast --json` still reports `warnings` from 37 resolver routing misses on GBrain `0.26.7`; full doctor also reports source frontmatter warnings. | blocked |
 | Latest safe GBrain version is used or explicitly pinned | Runtime GBrain, Remote MCP Docker pin, and verifier pin now match upstream `058fe695756ed16e43916d907af3845338430156` / `0.26.7`. | pass |
 | Local GBrain checkout is safe to update | `/Users/arshya/gbrain` is on `codex-gbrain-0.26.6-runtime-patches` with a dirty mode-only `src/cli.ts` change; it was intentionally not overwritten. | warning |
@@ -100,8 +100,9 @@ Conclusion: AStack has a working and useful dogfood layer, including live Remote
   - Uses a GBrain-only Codex phase for health/search/write/get, then an explicitly approval-bypassed noninteractive Codex phase for delete/restore/get against only the reversible canary slug.
 - Added `scripts/verify-gbrain-full-pass-gates.mjs` and npm script `verify:gbrain-full-pass-gates`.
   - Aggregates the remaining FULL PASS gates into one machine-readable result.
-  - Exits non-zero until Claude canary, scheduler burn-in, upstream PRs, and upgrade gates pass.
+  - Exits non-zero until Claude canary, Remote MCP/OAuth fixture canary, scheduler burn-in, upstream PRs, doctor, and upgrade gates pass.
   - Treats runtime/pin drift as blocking, but local custom checkout drift as a warning once runtime and durable pins match upstream.
+  - Runs the Remote MCP/OAuth fixture canary and requires proof that temporary fixture clients were revoked.
   - Runs a real target-service `gbrain doctor --json` gate; doctor warnings are blocking until the runtime status is `ok`.
 - Extended `scripts/verify-gbrain-openclaw-readiness.sh` with scheduler validation and enabled-agent-wrapper count.
 
@@ -541,9 +542,15 @@ npm run canary:gbrain-claude
 ```
 
 ```bash
-npm run verify:gbrain-full-pass-gates -- --skip-claude --json
-# checked at 2026-05-04T22:56:20Z with --skip-claude --skip-codex
+npm run verify:gbrain-full-pass-gates -- --skip-claude --skip-codex --json
+# checked at 2026-05-04T23:03:20Z
 # status=BLOCKED
+# PASS: remote_mcp_oauth_fixture_canary
+#   missing_token=401, bad_token=401, expired_token_denial=401
+#   revoked_client_denial=400, dcr_disabled=404, admin_route_denial=404
+#   CORS default-deny, log_redaction, read_only_write_denial,
+#   read/write/search/version/delete/restore all PASS
+#   oauth_fixture_clients_revoked=true
 # PASS: openclaw_runtime_risk_logs
 # WARN: update_flow_currentness runtime and durable pins match upstream, local checkout custom/dirty
 # BLOCKED: upstream_pr_619_resolver open/mergeable
@@ -551,7 +558,7 @@ npm run verify:gbrain-full-pass-gates -- --skip-claude --json
 # BLOCKED: runtime_gbrain_doctor status=warnings
 #   warning checks: resolver_health, frontmatter_integrity
 #   frontmatter_integrity: 4148 issue(s) across 21 sources
-# BLOCKED: scheduler_dead_jobs_burn_in 2.9h/24h complete, no new dead jobs so far
+# BLOCKED: scheduler_dead_jobs_burn_in 3.0h/24h complete, no new dead jobs so far
 # Claude gate evaluated separately with npm run canary:gbrain-claude:
 # BLOCKED_QUOTA until 2am Europe/Zurich
 ```

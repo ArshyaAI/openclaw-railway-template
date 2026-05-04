@@ -5,6 +5,7 @@ const args = new Set(process.argv.slice(2));
 const json = args.has('--json');
 const skipClaude = args.has('--skip-claude');
 const skipCodex = args.has('--skip-codex');
+const skipRemote = args.has('--skip-remote');
 const deadJobCutoff = new Date(process.env.GBRAIN_FULL_PASS_DEAD_JOB_CUTOFF || '2026-05-04T20:04:26Z');
 const burnInHoursRequired = Number(process.env.GBRAIN_FULL_PASS_BURN_IN_HOURS || '24');
 const codexCanaryTimeoutMs = Number(process.env.GBRAIN_CODEX_CANARY_TIMEOUT_MS || '900000');
@@ -18,6 +19,9 @@ const gates = [];
 await gate('upstream_pr_619_resolver', checkPullRequest(619, { requireMerged: false }));
 await gate('upstream_pr_620_http_auth', checkPullRequest(620, { requireMerged: false }));
 await gate('update_flow_currentness', checkUpdateFlow());
+if (!skipRemote) {
+  await gate('remote_mcp_oauth_fixture_canary', checkRemoteMcpCanary());
+}
 await gate('runtime_gbrain_doctor', checkRuntimeDoctor());
 await gate('openclaw_runtime_risk_logs', checkRuntimeRiskLogs());
 await gate('scheduler_dead_jobs_burn_in', checkSchedulerBurnIn());
@@ -39,8 +43,10 @@ const result = {
   full_pass_requires: [
     'Claude Code canary PASS',
     'Codex canary PASS',
+    'Remote MCP/OAuth fixture canary PASS',
     'scheduler burn-in window complete with no new dead shell jobs',
     'GBrain runtime doctor --json status ok',
+    'upstream PR #619 consumed so resolver doctor warnings are not shipped',
     'upstream PR #620 consumed so remote MCP auth is not astack-custom',
     'approval-gated runtime upgrade to latest safe upstream completed and canaried',
   ],
@@ -106,6 +112,33 @@ async function checkRuntimeRiskLogs() {
     return { status: 'PASS', reason: 'no current token/session/rate-limit risk logs', evidence: counts };
   }
   return { status: 'BLOCKED', reason: 'fresh runtime risk logs found', evidence: counts };
+}
+
+async function checkRemoteMcpCanary() {
+  const out = run('npm', ['run', 'canary:gbrain-remote-fixture'], { allowFailure: true, timeout: 420_000 });
+  const objects = parseJsonObjects(stripNpmPrefix(out.stdout));
+  const payload = objects.find((item) => item && item.status) || {};
+  const cleanup = objects.find((item) => item && item.oauth_fixture_clients_revoked === true) || {};
+  if (payload.status === 'PASS' && cleanup.oauth_fixture_clients_revoked === true) {
+    const skipped = (payload.evidence || []).filter((step) => step.status === 'SKIP');
+    if (skipped.length) {
+      return {
+        status: 'WARN',
+        reason: 'Remote MCP canary passed but skipped one or more evidence steps',
+        evidence: summarizeRemoteMcp(payload, cleanup, skipped),
+      };
+    }
+    return {
+      status: 'PASS',
+      reason: 'Remote MCP/OAuth fixture canary passed and fixture clients were revoked',
+      evidence: summarizeRemoteMcp(payload, cleanup),
+    };
+  }
+  return {
+    status: 'FAIL',
+    reason: `Remote MCP/OAuth fixture canary status=${payload.status || 'unknown'}`,
+    evidence: { payload, cleanup, exit_status: out.status },
+  };
 }
 
 async function checkRuntimeDoctor() {
@@ -181,6 +214,27 @@ function summarizeUpdate(payload) {
   };
 }
 
+function summarizeRemoteMcp(payload, cleanup, skipped = []) {
+  const evidence = payload.evidence || [];
+  const stepStatus = Object.fromEntries(evidence.map((step) => [step.step, step.status]));
+  const authStatuses = Object.fromEntries(
+    evidence
+      .filter((step) => typeof step.http_status === 'number')
+      .map((step) => [step.step, step.http_status]),
+  );
+  return {
+    status: payload.status,
+    url: payload.url,
+    auth: payload.auth,
+    exposed_tool_count: payload.exposed_tool_count,
+    canary_slug: payload.canary_slug,
+    step_status: stepStatus,
+    auth_http_status: authStatuses,
+    skipped: skipped.map((step) => ({ step: step.step, reason: step.reason })),
+    oauth_fixture_clients_revoked: cleanup.oauth_fixture_clients_revoked === true,
+  };
+}
+
 function run(cmd, cmdArgs, opts = {}) {
   const result = spawnSync(cmd, cmdArgs, {
     cwd: process.cwd(),
@@ -210,6 +264,49 @@ function parseJson(text) {
   } catch (err) {
     throw new Error(`failed to parse JSON: ${err.message}; text=${cleaned.slice(0, 500)}`);
   }
+}
+
+function parseJsonObjects(text) {
+  const objects = [];
+  let start = -1;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (ch === '\\') {
+        escaped = true;
+      } else if (ch === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+    if (ch === '{') {
+      if (depth === 0) start = i;
+      depth += 1;
+      continue;
+    }
+    if (ch === '}' && depth > 0) {
+      depth -= 1;
+      if (depth === 0 && start !== -1) {
+        const raw = text.slice(start, i + 1);
+        try {
+          objects.push(JSON.parse(raw));
+        } catch {
+          // Ignore non-JSON brace blocks in command banners.
+        }
+        start = -1;
+      }
+    }
+  }
+  return objects;
 }
 
 function parseLooseJson(text) {
