@@ -30,7 +30,7 @@ No command in this sprint inspected or mutated the forbidden service.
 | Workstream | Status | Evidence |
 | --- | --- | --- |
 | 1. Remote MCP hardening | code-ready, live remote deploy blocked by target scope | Wrapper patch now maps `/mcp` auth failures to `401/403`; canary now hard-fails if bad token returns non-401/403. Current live remote still fails with `bad_token expected clean 401/403 auth failure, got 500`. Upstream issue: <https://github.com/garrytan/gbrain/issues/616>. |
-| 2. Scheduler/quota fix | live patch deployed, monitoring pending | Deployment `4d70fc17-3642-47f4-bc88-92855c76c063` installed astack-owned scheduler. Runtime validate: `enabled_cron=12`, `disabled_cron=7`; scheduler startup logged `skip_disabled_startup` for all 7 disabled OpenClaw-agent wrapper jobs. `openclaw-agent-job.sh` now defaults to `openai/gpt-5.4` if intentionally enabled. |
+| 2. Scheduler/quota fix | live patch deployed, post-slot clean, 24-48h monitoring pending | Deployment `4d70fc17-3642-47f4-bc88-92855c76c063` installed astack-owned scheduler. Runtime validate: `enabled_cron=12`, `disabled_cron=7`; scheduler startup logged `skip_disabled_startup` for all 7 disabled OpenClaw-agent wrapper jobs. A post-critical-slot watch at `2026-05-04T20:04:26Z` found no new dead shell jobs after historical job `1781`; fresh 30m logs had 0 token mismatch, 0 session-store churn, and 0 rate-limit lines. `openclaw-agent-job.sh` now defaults to `openai/gpt-5.4` if intentionally enabled. |
 | 3. Claude Code canary | blocked | `claude mcp list` shows `gbrain` connected, but `claude --print ... mcp__gbrain__get_page` returned `You've hit your limit - resets 2am (Europe/Zurich)`. |
 | 4. Doctor warnings upstream route | upstream issue filed | Runtime doctor still warns on 37 shipped skill routing misses. Upstream issue: <https://github.com/garrytan/gbrain/issues/617>. |
 | 5. Update flow automation | pass with runtime SHA concern | Added `npm run check:gbrain-upstream`. It checks upstream SHA/package version, Docker/verifier pins, local checkout, and runtime SHA/version. Current output warns because runtime checkout SHA is `f79cad0d...` while upstream master is `9e2093f...`, but package version is `0.26.6`. |
@@ -139,6 +139,19 @@ npm run verify:gbrain -- --runtime-readonly
 ```
 
 ```bash
+sleep 1320 && npm run verify:gbrain -- --dead-jobs-readonly && \
+  GBRAIN_VERIFY_SINCE=30m npm run verify:gbrain -- --railway-current
+# completed at 2026-05-04T20:04:26Z
+# latest dead jobs remain historical: 1781, 1773, 1764, 1747, 1478
+# no new dead shell job appeared after the scheduler patch and critical slot
+# deployment 4d70fc17-3642-47f4-bc88-92855c76c063 SUCCESS
+# current_total_lines=0
+# current_token_mismatch_lines=0
+# current_sessions_store_lines=0
+# current_rate_limit_lines=0
+```
+
+```bash
 claude mcp list
 # gbrain: /Users/arshya/.bun/bin/gbrain serve - connected
 ```
@@ -147,6 +160,16 @@ claude mcp list
 claude --print --output-format json --permission-mode bypassPermissions \
   --allowedTools mcp__gbrain__get_page -- "<gbrain get_page canary>"
 # blocked: You've hit your limit - resets 2am (Europe/Zurich)
+```
+
+```bash
+/Users/arshya/.oracle/bin/oracle-pro review ... \
+  --scan-context --block-on-warning --run --json
+# status=blocked
+# blockedReason=strict_warning_block
+# oracleSessionId=null
+# no project context was sent to Oracle Pro
+# warnings were raised for scripts/gbrain-remote-mcp-canary.mjs and git diff
 ```
 
 ## Rollback
@@ -170,3 +193,4 @@ Remote MCP rollback:
 3. Re-run Claude Code real MCP canary after quota reset.
 4. Observe 24-48h that no new dead shell jobs are created from disabled OpenClaw-agent wrapper jobs or model cooldown.
 5. Wait for or contribute upstream fixes for GBrain issues #616 and #617; until then, status remains `PASS_WITH_CONCERNS`, not FULL PASS.
+6. Re-run the Oracle Pro final review gate with an approved, sanitized context packet or a narrower include set; the strict context scan blocked the run before any context was sent.
