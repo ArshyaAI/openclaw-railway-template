@@ -36,6 +36,27 @@ No targeted command inspected, mutated, restarted, deployed, SSHed into, or tail
 | 5. Update flow automation | pass with version drift concern | Added `npm run check:gbrain-upstream`. It checks upstream SHA/package version, Docker/verifier pins, local checkout, and runtime SHA/version. Current output warns because upstream master is now `058fe695756ed16e43916d907af3845338430156` / `0.26.7`, while Docker/verifier pins remain `9e2093fc9bb6cb46520e58b0c95b807e788d9606` and runtime remains GBrain `0.26.6`. Upgrade remains approval-gated. |
 | 6. Remote MCP product interface | live pass with upstream concern | astack keeps upstream `gbrain serve --http`, owns the Railway deploy/env/token policy/canary/rollback layer, and now has live OAuth-backed canary evidence on `gbrain-remote-mcp`. The only remaining concern is that the InvalidTokenError provider fix is astack-applied until PR #620 is landed or consumed upstream. |
 
+## Completion Audit Snapshot
+
+Checked at `2026-05-04T21:24:30Z`. Result: `NOT_FULL_PASS`.
+
+| Requirement | Evidence | Status |
+| --- | --- | --- |
+| Remote MCP bad/missing/expired bearer tokens return clean auth failures | `npm run canary:gbrain-remote-fixture` passed: missing token `401`, bad token `401`, expired token `401`, revoked client denial `400`. | pass in astack, upstream patch pending |
+| Remote MCP DCR, admin route, CORS, log-redaction, scoped write denial covered | Fixture canary passed DCR disabled `404`, admin denial `404`, CORS default-deny, log redaction, and read-only write denial. | pass |
+| Remote MCP uses upstream `gbrain serve --http`, not a custom gateway | `services/gbrain-remote-mcp/start-gbrain-http.mjs` launches upstream HTTP serve with environment hardening and a temporary safety patch. | pass with concern |
+| Upstream GBrain owns core resolver/auth behavior | PR #619 and PR #620 are open and mergeable, not merged. | blocked |
+| Scheduler no longer creates OpenClaw agent-wrapper sessions for migrated jobs | Runtime validate reports `enabled_agent_wrapper_count=0`; disabled wrapper jobs remain disabled. | pass |
+| Scheduler quota/cooldown fix has enough burn-in | Gate runner reports only `1.3h/24h` burn-in complete, with no new dead jobs so far. | blocked |
+| Claude Code accesses the shared GBrain with a real tool call | `claude mcp list` is connected, but `npm run canary:gbrain-claude` returns `BLOCKED_QUOTA` / `429` until 2am Europe/Zurich. | blocked |
+| Runtime GBrain doctor is `ok` | Runtime `gbrain doctor --fast --json` still reports `warnings` from 37 resolver routing misses on GBrain `0.26.6`. | blocked |
+| Latest safe GBrain version is used or explicitly pinned | `npm run check:gbrain-upstream -- --json` reports upstream master `058fe695756ed16e43916d907af3845338430156` / `0.26.7`; runtime is `f79cad0...` / `0.26.6`; Docker/verifier pins remain `9e2093...`. | blocked |
+| Runtime health has no current session/token/rate-limit storm | `GBRAIN_VERIFY_SINCE=30m npm run verify:gbrain -- --railway-current` reports current total/token/session/rate-limit lines all `0`. | pass |
+| Secrets not committed or printed in durable artifacts | PCRE2 scan over report, fixture script, package.json, and remote canary script returns no token/DB/API-key matches. | pass |
+| Forbidden NIKIN production service untouched | No targeted command inspected/mutated/restarted/deployed/SSHed/logged the forbidden service; fixture script refuses its service ID with exit `2`. | pass |
+
+Conclusion: AStack has a working and useful dogfood layer, including live Remote MCP/OAuth. FULL PASS remains blocked by upstream PR landing/consumption, Claude quota reset, scheduler burn-in, and approval-gated GBrain runtime upgrade.
+
 ## Changes Made
 
 - Added `patches/direct-minions-scheduler.mjs`.
