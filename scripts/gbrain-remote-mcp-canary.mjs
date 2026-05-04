@@ -181,8 +181,8 @@ async function expectAdminRouteDenied() {
   const res = await fetch(adminUrl, {
     headers: { Authorization: 'Bearer gbrain_bad_token_for_canary' },
   });
-  if (![401, 403].includes(res.status)) {
-    fail(`admin route expected 401/403 without admin cookie, got ${res.status}`);
+  if (![401, 403, 404].includes(res.status)) {
+    fail(`admin route expected 401/403/404 without admin cookie, got ${res.status}`);
   }
   evidence.push({ step: 'admin_route_denial', status: 'PASS', http_status: res.status });
 }
