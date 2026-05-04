@@ -38,7 +38,7 @@ No targeted command inspected, mutated, restarted, deployed, SSHed into, or tail
 
 ## Completion Audit Snapshot
 
-Checked at `2026-05-04T23:03:20Z`. Result: `NOT_FULL_PASS`.
+Checked at `2026-05-04T23:07:01Z`. Result: `NOT_FULL_PASS`.
 
 | Requirement | Evidence | Status |
 | --- | --- | --- |
@@ -49,7 +49,7 @@ Checked at `2026-05-04T23:03:20Z`. Result: `NOT_FULL_PASS`.
 | Scheduler no longer creates OpenClaw agent-wrapper sessions for migrated jobs | Runtime validate reports `enabled_agent_wrapper_count=0`; disabled wrapper jobs remain disabled. | pass |
 | Scheduler quota/cooldown fix has enough burn-in | Gate runner reports only `3.0h/24h` burn-in complete, with no new dead jobs so far. | blocked |
 | Claude Code accesses the shared GBrain with a real tool call | `claude mcp list` is connected, but `npm run canary:gbrain-claude` returns `BLOCKED_QUOTA` / `429` until 2am Europe/Zurich. | blocked |
-| Codex accesses the shared GBrain with real tool calls | `npm run canary:gbrain-codex` passed health, search, put/get, delete, and restore against the shared GBrain MCP; the full-pass gate also passed `codex_shared_gbrain_canary` at `2026-05-04T23:00:42Z`. | pass |
+| Codex accesses the shared GBrain with real tool calls | The full-pass gate passed `codex_shared_gbrain_canary` at `2026-05-04T23:07:01Z`: health, search, put/get, delete, and restore against the shared GBrain MCP. | pass |
 | Runtime GBrain doctor is `ok` | Runtime `gbrain doctor --fast --json` still reports `warnings` from 37 resolver routing misses on GBrain `0.26.7`; full doctor also reports source frontmatter warnings. | blocked |
 | Latest safe GBrain version is used or explicitly pinned | Runtime GBrain, Remote MCP Docker pin, and verifier pin now match upstream `058fe695756ed16e43916d907af3845338430156` / `0.26.7`. | pass |
 | Local GBrain checkout is safe to update | `/Users/arshya/gbrain` is on `codex-gbrain-0.26.6-runtime-patches` with a dirty mode-only `src/cli.ts` change; it was intentionally not overwritten. | warning |
@@ -542,8 +542,8 @@ npm run canary:gbrain-claude
 ```
 
 ```bash
-npm run verify:gbrain-full-pass-gates -- --skip-claude --skip-codex --json
-# checked at 2026-05-04T23:03:20Z
+npm run verify:gbrain-full-pass-gates -- --skip-claude --json
+# checked at 2026-05-04T23:07:01Z
 # status=BLOCKED
 # PASS: remote_mcp_oauth_fixture_canary
 #   missing_token=401, bad_token=401, expired_token_denial=401
@@ -552,6 +552,8 @@ npm run verify:gbrain-full-pass-gates -- --skip-claude --skip-codex --json
 #   read/write/search/version/delete/restore all PASS
 #   oauth_fixture_clients_revoked=true
 # PASS: openclaw_runtime_risk_logs
+# PASS: codex_shared_gbrain_canary
+#   health_seen=true, search_seen=true, sentinel_seen=true, delete_restore_seen=true
 # WARN: update_flow_currentness runtime and durable pins match upstream, local checkout custom/dirty
 # BLOCKED: upstream_pr_619_resolver open/mergeable
 # BLOCKED: upstream_pr_620_http_auth open/mergeable
