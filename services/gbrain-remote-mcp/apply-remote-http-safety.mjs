@@ -4,8 +4,9 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const root = process.env.GBRAIN_SOURCE_DIR || '/app';
-const file = join(root, 'src/commands/serve-http.ts');
-let source = readFileSync(file, 'utf8');
+const serveHttpFile = join(root, 'src/commands/serve-http.ts');
+const oauthProviderFile = join(root, 'src/core/oauth-provider.ts');
+let source = readFileSync(serveHttpFile, 'utf8');
 
 const corsBefore = `  app.use('/mcp', cors());
   app.use('/token', cors());
@@ -97,5 +98,28 @@ if (!source.includes(tokenBefore)) {
 }
 source = source.replace(tokenBefore, () => '${adminTokenBlock}');
 
-writeFileSync(file, source);
+writeFileSync(serveHttpFile, source);
+
+let oauthProvider = readFileSync(oauthProviderFile, 'utf8');
+if (!oauthProvider.includes("InvalidTokenError } from '@modelcontextprotocol/sdk/server/auth/errors.js'")) {
+  const authInfoImport = "import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';";
+  if (!oauthProvider.includes(authInfoImport)) {
+    throw new Error('OAuth provider InvalidTokenError import anchor not found');
+  }
+  oauthProvider = oauthProvider.replace(
+    authInfoImport,
+    `${authInfoImport}\nimport { InvalidTokenError } from '@modelcontextprotocol/sdk/server/auth/errors.js';`,
+  );
+}
+oauthProvider = oauthProvider
+  .replace("throw new Error('Token expired');", "throw new InvalidTokenError('Token expired');")
+  .replace("throw new Error('Invalid token');", "throw new InvalidTokenError('Invalid token');");
+if (
+  !oauthProvider.includes("throw new InvalidTokenError('Token expired');")
+  || !oauthProvider.includes("throw new InvalidTokenError('Invalid token');")
+) {
+  throw new Error('OAuth provider InvalidTokenError patch failed');
+}
+writeFileSync(oauthProviderFile, oauthProvider);
+
 console.log('Applied GBrain remote HTTP safety patch.');

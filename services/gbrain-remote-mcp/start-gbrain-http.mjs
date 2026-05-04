@@ -57,14 +57,17 @@ child.on('exit', (code, signal) => {
 });
 
 function ensureRemoteHttpSafetyPatch() {
-  const file = '/app/src/commands/serve-http.ts';
-  let source = readFileSync(file, 'utf8');
+  const serveHttpFile = '/app/src/commands/serve-http.ts';
+  const oauthProviderFile = '/app/src/core/oauth-provider.ts';
+  let source = readFileSync(serveHttpFile, 'utf8');
+  const oauthProvider = readFileSync(oauthProviderFile, 'utf8');
   if (
     source.includes('Admin Token: suppressed in Railway logs')
     && source.includes('origin: false')
     && source.includes('codexRemoteMcpAuthErrorHandler')
     && source.includes('async (req: Request, res: Response, next: NextFunction) => {\n    try {')
     && source.includes('next(err);')
+    && oauthProvider.includes("InvalidTokenError } from '@modelcontextprotocol/sdk/server/auth/errors.js'")
   ) {
     return;
   }
@@ -149,6 +152,30 @@ function ensureRemoteHttpSafetyPatch() {
     .replace(listenPattern, () => listenAfter)
     .replace(tokenBefore, () => '${adminTokenBlock}');
 
-  writeFileSync(file, source);
+  writeFileSync(serveHttpFile, source);
+
+  let providerSource = oauthProvider;
+  if (!providerSource.includes("InvalidTokenError } from '@modelcontextprotocol/sdk/server/auth/errors.js'")) {
+    const authInfoImport = "import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';";
+    if (!providerSource.includes(authInfoImport)) {
+      console.error('GBrain remote HTTP safety patch failed: missing OAuth provider import anchor.');
+      process.exit(65);
+    }
+    providerSource = providerSource.replace(
+      authInfoImport,
+      `${authInfoImport}\nimport { InvalidTokenError } from '@modelcontextprotocol/sdk/server/auth/errors.js';`,
+    );
+  }
+  providerSource = providerSource
+    .replace("throw new Error('Token expired');", "throw new InvalidTokenError('Token expired');")
+    .replace("throw new Error('Invalid token');", "throw new InvalidTokenError('Invalid token');");
+  if (
+    !providerSource.includes("throw new InvalidTokenError('Token expired');")
+    || !providerSource.includes("throw new InvalidTokenError('Invalid token');")
+  ) {
+    console.error('GBrain remote HTTP safety patch failed: OAuth provider InvalidTokenError patch missing.');
+    process.exit(65);
+  }
+  writeFileSync(oauthProviderFile, providerSource);
   console.error('Applied GBrain remote HTTP safety patch at startup.');
 }

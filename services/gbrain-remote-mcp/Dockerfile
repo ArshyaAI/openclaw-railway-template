@@ -14,7 +14,8 @@ RUN git clone https://github.com/garrytan/gbrain.git /app \
 COPY apply-remote-http-safety.mjs /tmp/apply-remote-http-safety.mjs
 RUN bun /tmp/apply-remote-http-safety.mjs
 RUN grep -q "Admin Token: suppressed in Railway logs" /app/src/commands/serve-http.ts \
-  && grep -q "origin: false" /app/src/commands/serve-http.ts
+  && grep -q "origin: false" /app/src/commands/serve-http.ts \
+  && grep -q "InvalidTokenError" /app/src/core/oauth-provider.ts
 
 RUN bun install --frozen-lockfile
 
