@@ -31,8 +31,8 @@ Forbidden non-target service:
 | --- | --- | --- |
 | OpenClaw runtime | `OpenClaw 2026.5.2 (8b2a6e5)` | `PASS` |
 | AlphaClaw runtime | `@chrysb/alphaclaw 0.9.12` | `PASS` |
-| GBrain runtime | `gbrain 0.26.0`, checkout `254609fdb9ace13b4147cdf4c5ef56460ec51dd9` | `PASS` |
-| Upstream source | `https://github.com/garrytan/gbrain`, inspected at `d01a921e01243c326e2508c7d21eb85095f1fbe8` | `PASS` |
+| GBrain runtime | `gbrain 0.26.0`, checkout `254609fdb9ace13b4147cdf4c5ef56460ec51dd9` | `PASS_WITH_LATEST_CONCERN` |
+| Upstream source | `https://github.com/garrytan/gbrain`, latest checked `master` now `9e2093fc9bb6cb46520e58b0c95b807e788d9606` / `0.26.6`; runtime was built from previous upstream `d01a921e01243c326e2508c7d21eb85095f1fbe8` plus patches | `BLOCKS_FULL_COMPLETION` |
 | GBrain schema | Schema `33`, latest `33` | `PASS` |
 | GBrain supervisor | Running from boot, PID `81`, `crashes_24h=0` | `PASS` |
 | Full doctor | `status=warnings`, `health_score=90`, DB/pgvector/RLS/schema/embeddings/jsonb/body/queue ok | `PASS_WITH_WARNINGS` |
@@ -41,6 +41,7 @@ Forbidden non-target service:
 | MCP smoke | Client listed `41` tools, including `search`, `query`, `get_page` | `PASS` |
 | OpenClaw agent canary | Fresh post-deploy run `443741c2-6ba3-4ef0-a9d1-8be70a0d62c9`, `status=ok`, used `gbrain__query`, failures `0`, no shell fallback | `PASS` |
 | Broad MCP canary | Run `b8e37a51-2e74-408a-8562-05be43d695fc`, `status=ok`, used `gbrain__get_health`, `gbrain__get_stats`, `gbrain__search`, `gbrain__get_page`, `gbrain__get_links`, `gbrain__get_backlinks`, and `gbrain__get_tags`; failures `0` | `PASS` |
+| Full feature coverage | Runtime discovers `41` GBrain tools; only read/query/health/stats/graph-read/tag-read/list/sync paths are exercised. Mutating, file, raw-data, versioning, ingest-log, resolver/chunk/orphan, timeline traversal, and job-control tools still need a controlled canary | `BLOCKS_FULL_COMPLETION` |
 | Runtime logs | Latest checks: 30m window saw one isolated 4-line `token_mismatch` burst at `2026-05-04T05:30:31Z`; follow-up 1m window was clean with `token_mismatch=0`, `sessions_store=0`, `rate_limit=0` | `PASS_WITH_NOTE` |
 | Dirty/untracked Markdown sync | Synthetic allowlisted source indexed dirty tracked and untracked Markdown without false `up_to_date` | `PASS` |
 | Direct-minions scheduler | Process `265 node /data/.openclaw/cron/bin/direct-minions-scheduler.mjs`; active OpenClaw agent wrappers `0`; direct GBrain shell jobs remain enabled; queue `0 waiting, 0 active, 0 stalled` | `PASS` |
@@ -51,6 +52,11 @@ Forbidden non-target service:
   `plugins install /data/gbrain --link` rejected it because current OpenClaw
   expects `package.json` `openclaw.extensions`. Runtime MCP is therefore
   configured directly with `openclaw mcp set gbrain`, not via plugin install.
+- Upstream GBrain has advanced past the runtime pin. Latest checked upstream
+  `master` is `9e2093fc9bb6cb46520e58b0c95b807e788d9606` / `0.26.6`.
+  Runtime remains `0.26.0` / schema `33`; upstream `0.26.5` adds destructive
+  operation guards and schema `34`, and `0.26.6` adds PGLite/Postgres parity
+  gating. This blocks any "latest-safe" or full completion claim.
 - `gbrain doctor --json` still warns on resolver routing fixtures and
   `frontmatter_integrity` (`4129` issues across `21` sources). DB, schema,
   embeddings, JSONB, markdown body completeness, and queue health are ok.
@@ -76,10 +82,12 @@ Forbidden non-target service:
   `d01a921e01243c326e2508c7d21eb85095f1fbe8`. Local doctor is still not the
   authority for the Railway target because the local supervisor is intentionally
   not running.
-- Oracle Pro final gate agreed that `PASS_WITH_CONCERNS` is defensible for this
-  target, but rejected any claim of perfect/full-feature readiness until doctor
-  warnings, upstream plugin packaging, and longer soak proof are addressed or
-  waived.
+- Final Oracle Pro gate on `2026-05-04` returned
+  `BLOCKED_FOR_GOAL_COMPLETION / PASS_WITH_CONCERNS_FOR_CORE_DOGFOOD`.
+  It explicitly rejected closing the `/goal` because the runtime is behind
+  upstream `0.26.6`, not all `41` GBrain tools/features are live-exercised, the
+  plugin install path is bypassed, doctor warnings remain, and HTTP/OAuth/Admin
+  surfaces are not proven live.
 
 ## Safe Verification Commands
 
