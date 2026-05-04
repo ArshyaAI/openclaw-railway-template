@@ -393,6 +393,10 @@ HOME=$(mktemp -d /tmp/gbrain-test-home.XXXXXX) \
 
 gh pr view 619 --repo garrytan/gbrain --json number,title,state,url
 # #619 fix: align resolver routing fixtures [OPEN, MERGEABLE]
+
+gh pr comment 619 --repo garrytan/gbrain --body "<resolver readiness evidence>"
+# https://github.com/garrytan/gbrain/pull/619#issuecomment-4374657081
+# posted doctor/routing-eval/isolated test evidence and downstream readiness impact
 ```
 
 ```bash
@@ -408,6 +412,10 @@ bun test test/e2e/serve-http-oauth.test.ts
 
 gh pr view 620 --repo garrytan/gbrain --json number,title,state,url
 # #620 fix: return clean auth failures for invalid MCP bearer tokens [OPEN, MERGEABLE]
+
+gh pr comment 620 --repo garrytan/gbrain --body "<remote MCP auth readiness evidence>"
+# https://github.com/garrytan/gbrain/pull/620#issuecomment-4374658198
+# posted typecheck/oauth-test/live remote MCP canary evidence and downstream readiness impact
 ```
 
 ```bash
