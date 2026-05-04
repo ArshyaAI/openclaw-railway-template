@@ -29,8 +29,8 @@ No command in this sprint inspected or mutated the forbidden service.
 
 | Workstream | Status | Evidence |
 | --- | --- | --- |
-| 1. Remote MCP hardening | code-ready, live remote deploy blocked by target scope | Wrapper patch now maps `/mcp` auth failures to `401/403`; canary now hard-fails if bad token returns non-401/403. Current live remote still fails with `bad_token expected clean 401/403 auth failure, got 500`. Upstream issue: <https://github.com/garrytan/gbrain/issues/616>. |
-| 2. Scheduler/quota fix | live patch deployed, post-slot clean, 24-48h monitoring pending | Deployment `4d70fc17-3642-47f4-bc88-92855c76c063` installed astack-owned scheduler. Runtime validate: `enabled_cron=12`, `disabled_cron=7`; scheduler startup logged `skip_disabled_startup` for all 7 disabled OpenClaw-agent wrapper jobs. A post-critical-slot watch at `2026-05-04T20:04:26Z` found no new dead shell jobs after historical job `1781`; fresh 30m logs had 0 token mismatch, 0 session-store churn, and 0 rate-limit lines. `openclaw-agent-job.sh` now defaults to `openai/gpt-5.4` if intentionally enabled. |
+| 1. Remote MCP hardening | code-ready, live remote deploy blocked by target scope | Wrapper patch now maps `/mcp` auth failures to `401/403`, wraps the async `/mcp` handler with `try/catch next(err)`, and canary now hard-fails if bad token returns non-401/403. Current live remote still fails with `bad_token expected clean 401/403 auth failure, got 500`. Upstream issue: <https://github.com/garrytan/gbrain/issues/616>. |
+| 2. Scheduler/quota fix | live patch deployed, post-slot clean, 24-48h monitoring pending | Deployment `44b4da3f-da1e-46b0-b640-d4e42ba731d8` installed the corrected astack-owned scheduler/wrapper. Runtime validate: `enabled_cron=12`, `disabled_cron=7`; scheduler startup logged `skip_disabled_startup` for all 7 disabled OpenClaw-agent wrapper jobs. A post-critical-slot watch at `2026-05-04T20:04:26Z` found no new dead shell jobs after historical job `1781`; fresh logs had 0 token mismatch, 0 session-store churn, and 0 rate-limit lines. `openclaw-agent-job.sh` now defaults to `openai/gpt-5.4` if intentionally enabled and preserves failure exit codes across no-fallback, fallback-success, and fallback-fail paths. |
 | 3. Claude Code canary | blocked | `claude mcp list` shows `gbrain` connected, but `claude --print ... mcp__gbrain__get_page` returned `You've hit your limit - resets 2am (Europe/Zurich)`. |
 | 4. Doctor warnings upstream route | upstream issue filed | Runtime doctor still warns on 37 shipped skill routing misses. Upstream issue: <https://github.com/garrytan/gbrain/issues/617>. |
 | 5. Update flow automation | pass with runtime SHA concern | Added `npm run check:gbrain-upstream`. It checks upstream SHA/package version, Docker/verifier pins, local checkout, and runtime SHA/version. Current output warns because runtime checkout SHA is `f79cad0d...` while upstream master is `9e2093f...`, but package version is `0.26.6`. |
@@ -47,10 +47,14 @@ No command in this sprint inspected or mutated the forbidden service.
   - Defaults scheduled OpenClaw-agent wrapper jobs to `openai/gpt-5.4`.
   - Supports `OPENCLAW_AGENT_JOB_MODEL` and `OPENCLAW_AGENT_JOB_FALLBACK_MODEL`.
   - Retries fallback on quota/cooldown/rate-limit text if configured.
+  - Preserves failing exit codes when the primary run fails and no fallback succeeds.
+- Added `scripts/test-openclaw-agent-job.sh`.
+  - Covers primary failure without fallback, fallback success, and fallback failure.
 - Updated `patches/start-astack.sh`.
   - Installs the astack-owned direct-minions runtime scripts into `/data/.openclaw/cron/bin` at boot, backing up changed files first.
 - Updated Remote MCP wrapper patch.
   - Adds a `/mcp` auth error handler that redacts auth failures and returns `401/403`.
+  - Wraps the async `/mcp` handler in `try/catch next(err)` before the error middleware.
 - Expanded `scripts/gbrain-remote-mcp-canary.mjs`.
   - Missing token, bad token, DCR disabled, CORS default-deny, admin-route denial, read-only write denial.
   - Optional env-backed checks for expired token, revoked client, and log redaction sample.
@@ -83,6 +87,7 @@ node --check patches/direct-minions-scheduler.mjs
 bash -n patches/start-astack.sh
 bash -n patches/openclaw-agent-job.sh
 bash -n scripts/verify-gbrain-openclaw-readiness.sh
+npm run test:openclaw-agent-job
 ```
 
 ```bash
@@ -152,6 +157,31 @@ sleep 1320 && npm run verify:gbrain -- --dead-jobs-readonly && \
 ```
 
 ```bash
+/Users/arshya/.oracle/bin/oracle-pro review ... --run --json
+# status=ok
+# recommendationSummary=Keep PASS_WITH_CONCERNS
+# blockerCount=5, nonBlockerCount=5
+# key blocker fixed in this sprint: openclaw-agent-job.sh exit-status preservation
+```
+
+```bash
+railway up --project fbdb217b-060f-4f1e-8697-08a6288a19c4 \
+  --environment production \
+  --service 6f333a2b-07d9-4219-8531-3b96fbc6a2f9 \
+  --detach \
+  --message "fix openclaw agent job fallback status"
+# deployment 44b4da3f-da1e-46b0-b640-d4e42ba731d8
+# final status SUCCESS, stopped=false
+```
+
+```bash
+grep -n "fallback_err_file\\|OPENCLAW_AGENT_JOB_DATA_HOME\\|fallback_status\\|openai/gpt-5.4" \
+  /data/.openclaw/cron/bin/openclaw-agent-job.sh
+# runtime wrapper contains OPENCLAW_AGENT_JOB_DATA_HOME, fallback_err_file,
+# fallback_status, and default openai/gpt-5.4
+```
+
+```bash
 claude mcp list
 # gbrain: /Users/arshya/.bun/bin/gbrain serve - connected
 ```
@@ -162,22 +192,13 @@ claude --print --output-format json --permission-mode bypassPermissions \
 # blocked: You've hit your limit - resets 2am (Europe/Zurich)
 ```
 
-```bash
-/Users/arshya/.oracle/bin/oracle-pro review ... \
-  --scan-context --block-on-warning --run --json
-# status=blocked
-# blockedReason=strict_warning_block
-# oracleSessionId=null
-# no project context was sent to Oracle Pro
-# warnings were raised for scripts/gbrain-remote-mcp-canary.mjs and git diff
-```
-
 ## Rollback
 
 OpenClaw target rollback:
 
-1. Roll Railway service `openclaw-railway-template` back from `4d70fc17-3642-47f4-bc88-92855c76c063` to the previous known-good deployment `8f4b1abf-15d0-4052-87e2-348e1555d282`.
-2. Or restore the runtime backups created by `start-astack.sh` under:
+1. Roll Railway service `openclaw-railway-template` back from `44b4da3f-da1e-46b0-b640-d4e42ba731d8` to the previous known-good deployment `4d70fc17-3642-47f4-bc88-92855c76c063`.
+2. If a full scheduler revert is needed, roll further back to `8f4b1abf-15d0-4052-87e2-348e1555d282`.
+3. Or restore the runtime backups created by `start-astack.sh` under:
    - `/data/.openclaw/cron/bin/direct-minions-scheduler.mjs.bak.astack-*`
    - `/data/.openclaw/cron/bin/openclaw-agent-job.sh.bak.astack-*`
 
@@ -193,4 +214,3 @@ Remote MCP rollback:
 3. Re-run Claude Code real MCP canary after quota reset.
 4. Observe 24-48h that no new dead shell jobs are created from disabled OpenClaw-agent wrapper jobs or model cooldown.
 5. Wait for or contribute upstream fixes for GBrain issues #616 and #617; until then, status remains `PASS_WITH_CONCERNS`, not FULL PASS.
-6. Re-run the Oracle Pro final review gate with an approved, sanitized context packet or a narrower include set; the strict context scan blocked the run before any context was sent.

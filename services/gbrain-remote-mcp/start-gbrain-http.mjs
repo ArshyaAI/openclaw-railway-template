@@ -63,6 +63,8 @@ function ensureRemoteHttpSafetyPatch() {
     source.includes('Admin Token: suppressed in Railway logs')
     && source.includes('origin: false')
     && source.includes('codexRemoteMcpAuthErrorHandler')
+    && source.includes('async (req: Request, res: Response, next: NextFunction) => {\n    try {')
+    && source.includes('next(err);')
   ) {
     return;
   }
@@ -94,10 +96,20 @@ function ensureRemoteHttpSafetyPatch() {
 ║  \${bootstrapToken.substring(0, 50)}  ║
 ║  \${bootstrapToken.substring(50).padEnd(50)}  ║`;
 
+  const mcpRouteStartBefore = `  app.post('/mcp', requireBearerAuth({ verifier: oauthProvider }), async (req: Request, res: Response) => {
+    const startTime = Date.now();`;
+
+  const mcpRouteStartAfter = `  app.post('/mcp', requireBearerAuth({ verifier: oauthProvider }), async (req: Request, res: Response, next: NextFunction) => {
+    try {
+    const startTime = Date.now();`;
+
   const mcpRouteAfter = `    await transport.handleRequest(req, res, req.body);
   });`;
 
   const authErrorHandler = `    await transport.handleRequest(req, res, req.body);
+    } catch (err) {
+      next(err);
+    }
   });
 
   const codexRemoteMcpAuthErrorHandler = (err: unknown, _req: Request, res: Response, next: NextFunction) => {
@@ -119,7 +131,7 @@ function ensureRemoteHttpSafetyPatch() {
   };
   app.use('/mcp', codexRemoteMcpAuthErrorHandler);`;
 
-  for (const [label, anchor] of [['cors', corsBefore], ['token', tokenBefore], ['mcp auth error handler', mcpRouteAfter]]) {
+  for (const [label, anchor] of [['cors', corsBefore], ['token', tokenBefore], ['mcp route start', mcpRouteStartBefore], ['mcp auth error handler', mcpRouteAfter]]) {
     if (!source.includes(anchor)) {
       console.error(`GBrain remote HTTP safety patch failed: missing ${label} anchor.`);
       process.exit(65);
@@ -132,6 +144,7 @@ function ensureRemoteHttpSafetyPatch() {
 
   source = source
     .replace(corsBefore, corsAfter)
+    .replace(mcpRouteStartBefore, () => mcpRouteStartAfter)
     .replace(mcpRouteAfter, () => authErrorHandler)
     .replace(listenPattern, () => listenAfter)
     .replace(tokenBefore, () => '${adminTokenBlock}');

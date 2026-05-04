@@ -44,10 +44,20 @@ const tokenBefore = `║  Admin Token (paste into /admin login):              �
 ║  \${bootstrapToken.substring(0, 50)}  ║
 ║  \${bootstrapToken.substring(50).padEnd(50)}  ║`;
 
+const mcpRouteStartBefore = `  app.post('/mcp', requireBearerAuth({ verifier: oauthProvider }), async (req: Request, res: Response) => {
+    const startTime = Date.now();`;
+
+const mcpRouteStartAfter = `  app.post('/mcp', requireBearerAuth({ verifier: oauthProvider }), async (req: Request, res: Response, next: NextFunction) => {
+    try {
+    const startTime = Date.now();`;
+
 const mcpRouteAfter = `    await transport.handleRequest(req, res, req.body);
   });`;
 
 const authErrorHandler = `    await transport.handleRequest(req, res, req.body);
+    } catch (err) {
+      next(err);
+    }
   });
 
   const codexRemoteMcpAuthErrorHandler = (err: unknown, _req: Request, res: Response, next: NextFunction) => {
@@ -71,6 +81,12 @@ const authErrorHandler = `    await transport.handleRequest(req, res, req.body);
 
 if (!source.includes(mcpRouteAfter)) {
   throw new Error('MCP auth error handler anchor not found');
+}
+if (!source.includes(mcpRouteStartBefore) && !source.includes('next: NextFunction) => {\n    try {')) {
+  throw new Error('MCP route start anchor not found');
+}
+if (!source.includes('next: NextFunction) => {\n    try {')) {
+  source = source.replace(mcpRouteStartBefore, () => mcpRouteStartAfter);
 }
 if (!source.includes('codexRemoteMcpAuthErrorHandler')) {
   source = source.replace(mcpRouteAfter, () => authErrorHandler);
