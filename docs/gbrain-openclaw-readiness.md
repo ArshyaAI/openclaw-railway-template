@@ -41,7 +41,7 @@ Forbidden non-target service:
 | MCP smoke | Client listed `41` tools, including `search`, `query`, `get_page` | `PASS` |
 | OpenClaw agent canary | Fresh post-deploy run `443741c2-6ba3-4ef0-a9d1-8be70a0d62c9`, `status=ok`, used `gbrain__query`, failures `0`, no shell fallback | `PASS` |
 | Broad MCP canary | Run `b8e37a51-2e74-408a-8562-05be43d695fc`, `status=ok`, used `gbrain__get_health`, `gbrain__get_stats`, `gbrain__search`, `gbrain__get_page`, `gbrain__get_links`, `gbrain__get_backlinks`, and `gbrain__get_tags`; failures `0` | `PASS` |
-| Runtime logs | Last 15m after boot-patch deploy: `current_total_lines=56`, `token_mismatch=0`, `sessions_store=0`, `rate_limit=0` | `PASS` |
+| Runtime logs | Latest checks: 30m window saw one isolated 4-line `token_mismatch` burst at `2026-05-04T05:30:31Z`; follow-up 1m window was clean with `token_mismatch=0`, `sessions_store=0`, `rate_limit=0` | `PASS_WITH_NOTE` |
 | Dirty/untracked Markdown sync | Synthetic allowlisted source indexed dirty tracked and untracked Markdown without false `up_to_date` | `PASS` |
 | Direct-minions scheduler | Process `265 node /data/.openclaw/cron/bin/direct-minions-scheduler.mjs`; active OpenClaw agent wrappers `0`; direct GBrain shell jobs remain enabled; queue `0 waiting, 0 active, 0 stalled` | `PASS` |
 
@@ -54,6 +54,9 @@ Forbidden non-target service:
 - `gbrain doctor --json` still warns on resolver routing fixtures and
   `frontmatter_integrity` (`4129` issues across `21` sources). DB, schema,
   embeddings, JSONB, markdown body completeness, and queue health are ok.
+- A follow-up runtime log check found one isolated four-line
+  `token_mismatch` burst at `2026-05-04T05:30:31Z`; a later 1-minute window was
+  clean. Treat as a watch item, not an active session-store loop.
 - Boot persistence is now proven by deployment `534de0ca-dd28-4127-b521-f8c8413c6e43`.
   The template patches AlphaClaw after its remote config restore and before
   Gateway launch so the Gateway starts with `mcp.servers.gbrain` already in
