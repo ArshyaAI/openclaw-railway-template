@@ -63,6 +63,9 @@ No targeted command inspected, mutated, restarted, deployed, SSHed into, or tail
 - Added `scripts/gbrain-claude-code-canary.sh` and npm script `canary:gbrain-claude`.
   - Runs the required Claude Code shared-GBrain get/search/write/delete/restore canary.
   - Returns machine-readable `BLOCKED_QUOTA` on Claude 429 instead of failing ambiguously.
+- Added `scripts/verify-gbrain-full-pass-gates.mjs` and npm script `verify:gbrain-full-pass-gates`.
+  - Aggregates the remaining FULL PASS gates into one machine-readable result.
+  - Exits non-zero until Claude canary, scheduler burn-in, upstream PRs, and upgrade gates pass.
 - Extended `scripts/verify-gbrain-openclaw-readiness.sh` with scheduler validation and enabled-agent-wrapper count.
 
 ## Command Evidence
@@ -358,6 +361,18 @@ npm run canary:gbrain-claude
 # claude_exit_code=1
 # api_error_status=429
 # message="You've hit your limit · resets 2am (Europe/Zurich)"
+```
+
+```bash
+npm run verify:gbrain-full-pass-gates -- --json
+# checked at 2026-05-04T21:12:44Z
+# status=BLOCKED
+# PASS: openclaw_runtime_risk_logs
+# BLOCKED: upstream_pr_619_resolver open/mergeable
+# BLOCKED: upstream_pr_620_http_auth open/mergeable
+# BLOCKED: update_flow_currentness runtime/pins behind upstream 0.26.7
+# BLOCKED: scheduler_dead_jobs_burn_in 1.1h/24h complete, no new dead jobs so far
+# BLOCKED: claude_code_shared_gbrain_canary quota reset 2am Europe/Zurich
 ```
 
 ## Rollback
