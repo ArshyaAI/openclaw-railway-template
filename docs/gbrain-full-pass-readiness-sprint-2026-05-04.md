@@ -102,6 +102,7 @@ Conclusion: AStack has a working and useful dogfood layer, including live Remote
   - Aggregates the remaining FULL PASS gates into one machine-readable result.
   - Exits non-zero until Claude canary, scheduler burn-in, upstream PRs, and upgrade gates pass.
   - Treats runtime/pin drift as blocking, but local custom checkout drift as a warning once runtime and durable pins match upstream.
+  - Runs a real target-service `gbrain doctor --json` gate; doctor warnings are blocking until the runtime status is `ok`.
 - Extended `scripts/verify-gbrain-openclaw-readiness.sh` with scheduler validation and enabled-agent-wrapper count.
 
 ## Command Evidence
@@ -541,14 +542,16 @@ npm run canary:gbrain-claude
 
 ```bash
 npm run verify:gbrain-full-pass-gates -- --skip-claude --json
-# checked at 2026-05-04T22:48:17Z
+# checked at 2026-05-04T22:56:20Z with --skip-claude --skip-codex
 # status=BLOCKED
 # PASS: openclaw_runtime_risk_logs
-# PASS: codex_shared_gbrain_canary
 # WARN: update_flow_currentness runtime and durable pins match upstream, local checkout custom/dirty
 # BLOCKED: upstream_pr_619_resolver open/mergeable
 # BLOCKED: upstream_pr_620_http_auth open/mergeable
-# BLOCKED: scheduler_dead_jobs_burn_in 2.7h/24h complete, no new dead jobs so far
+# BLOCKED: runtime_gbrain_doctor status=warnings
+#   warning checks: resolver_health, frontmatter_integrity
+#   frontmatter_integrity: 4148 issue(s) across 21 sources
+# BLOCKED: scheduler_dead_jobs_burn_in 2.9h/24h complete, no new dead jobs so far
 # Claude gate evaluated separately with npm run canary:gbrain-claude:
 # BLOCKED_QUOTA until 2am Europe/Zurich
 ```
@@ -581,4 +584,5 @@ Remote MCP rollback:
 2. Observe 24-48h that no new dead shell jobs are created from disabled OpenClaw-agent wrapper jobs or model cooldown.
 3. Land or consume upstream GBrain PR #619 so runtime doctor can move from shipped resolver warnings to `ok`.
 4. Land or consume upstream GBrain PR #620 so invalid/expired MCP bearer tokens return clean OAuth auth failures from upstream, not only from the astack wrapper; until then, status remains `PASS_WITH_CONCERNS`, not FULL PASS.
-5. Decide whether to update the local custom checkout `/Users/arshya/gbrain` from package `0.26.6` to `0.26.7`; it is intentionally preserved because it is a custom dirty branch.
+5. Resolve or explicitly scope the runtime `frontmatter_integrity` doctor warnings: 4148 issue(s) across 21 sources. This likely needs a separate data-cleanup gate because it touches many source repos/vaults.
+6. Decide whether to update the local custom checkout `/Users/arshya/gbrain` from package `0.26.6` to `0.26.7`; it is intentionally preserved because it is a custom dirty branch.

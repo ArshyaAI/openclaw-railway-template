@@ -8,12 +8,17 @@ const skipCodex = args.has('--skip-codex');
 const deadJobCutoff = new Date(process.env.GBRAIN_FULL_PASS_DEAD_JOB_CUTOFF || '2026-05-04T20:04:26Z');
 const burnInHoursRequired = Number(process.env.GBRAIN_FULL_PASS_BURN_IN_HOURS || '24');
 const codexCanaryTimeoutMs = Number(process.env.GBRAIN_CODEX_CANARY_TIMEOUT_MS || '900000');
+const targetProjectId = 'fbdb217b-060f-4f1e-8697-08a6288a19c4';
+const targetEnvironment = 'production';
+const targetServiceId = '6f333a2b-07d9-4219-8531-3b96fbc6a2f9';
+const forbiddenServiceId = '63b84308-25d7-4b03-9c23-4d0d7239728f';
 
 const gates = [];
 
 await gate('upstream_pr_619_resolver', checkPullRequest(619, { requireMerged: false }));
 await gate('upstream_pr_620_http_auth', checkPullRequest(620, { requireMerged: false }));
 await gate('update_flow_currentness', checkUpdateFlow());
+await gate('runtime_gbrain_doctor', checkRuntimeDoctor());
 await gate('openclaw_runtime_risk_logs', checkRuntimeRiskLogs());
 await gate('scheduler_dead_jobs_burn_in', checkSchedulerBurnIn());
 if (!skipClaude) {
@@ -35,7 +40,7 @@ const result = {
     'Claude Code canary PASS',
     'Codex canary PASS',
     'scheduler burn-in window complete with no new dead shell jobs',
-    'GBrain runtime doctor ok via consumed PR #619',
+    'GBrain runtime doctor --json status ok',
     'upstream PR #620 consumed so remote MCP auth is not astack-custom',
     'approval-gated runtime upgrade to latest safe upstream completed and canaried',
   ],
@@ -101,6 +106,37 @@ async function checkRuntimeRiskLogs() {
     return { status: 'PASS', reason: 'no current token/session/rate-limit risk logs', evidence: counts };
   }
   return { status: 'BLOCKED', reason: 'fresh runtime risk logs found', evidence: counts };
+}
+
+async function checkRuntimeDoctor() {
+  if (targetServiceId === forbiddenServiceId) {
+    return { status: 'BLOCKED', reason: 'refusing forbidden Railway service id' };
+  }
+  const remote = [
+    'env HOME=/data GBRAIN_HOME=/data BRAIN_REPO=/data/brain BUN_INSTALL=/data/.bun PATH=/data/.bun/bin:/app/node_modules/.bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
+    'bash -lc',
+    quote('cd /data/gbrain && /data/.bun/bin/gbrain doctor --json 2>/tmp/gbrain-doctor-progress.log'),
+  ].join(' ');
+  const out = run('railway', [
+    'ssh',
+    '--project', targetProjectId,
+    '--environment', targetEnvironment,
+    '--service', targetServiceId,
+    remote,
+  ], { timeout: 420_000 });
+  const payload = parseLooseJson(out.stdout);
+  const warningChecks = (payload.checks || [])
+    .filter((check) => check.status !== 'ok')
+    .map((check) => ({ name: check.name, status: check.status, message: check.message }));
+  const evidence = {
+    status: payload.status,
+    health_score: payload.health_score,
+    warning_checks: warningChecks,
+  };
+  if (payload.status === 'ok') {
+    return { status: 'PASS', reason: 'runtime doctor status ok', evidence };
+  }
+  return { status: 'BLOCKED', reason: `runtime doctor status=${payload.status || 'unknown'}`, evidence };
 }
 
 async function checkSchedulerBurnIn() {
@@ -174,4 +210,17 @@ function parseJson(text) {
   } catch (err) {
     throw new Error(`failed to parse JSON: ${err.message}; text=${cleaned.slice(0, 500)}`);
   }
+}
+
+function parseLooseJson(text) {
+  const start = text.indexOf('{');
+  const end = text.lastIndexOf('}');
+  if (start === -1 || end <= start) {
+    throw new Error(`failed to find JSON object; text=${text.slice(0, 500)}`);
+  }
+  return JSON.parse(text.slice(start, end + 1));
+}
+
+function quote(value) {
+  return `'${String(value).replace(/'/g, `'\\''`)}'`;
 }
