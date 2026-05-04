@@ -59,7 +59,11 @@ child.on('exit', (code, signal) => {
 function ensureRemoteHttpSafetyPatch() {
   const file = '/app/src/commands/serve-http.ts';
   let source = readFileSync(file, 'utf8');
-  if (source.includes('Admin Token: suppressed in Railway logs') && source.includes('origin: false')) {
+  if (
+    source.includes('Admin Token: suppressed in Railway logs')
+    && source.includes('origin: false')
+    && source.includes('codexRemoteMcpAuthErrorHandler')
+  ) {
     return;
   }
 
@@ -90,7 +94,32 @@ function ensureRemoteHttpSafetyPatch() {
 ║  \${bootstrapToken.substring(0, 50)}  ║
 ║  \${bootstrapToken.substring(50).padEnd(50)}  ║`;
 
-  for (const [label, anchor] of [['cors', corsBefore], ['token', tokenBefore]]) {
+  const mcpRouteAfter = `    await transport.handleRequest(req, res, req.body);
+  });`;
+
+  const authErrorHandler = `    await transport.handleRequest(req, res, req.body);
+  });
+
+  const codexRemoteMcpAuthErrorHandler = (err: unknown, _req: Request, res: Response, next: NextFunction) => {
+    if (res.headersSent) return next(err);
+    const statusCode = Number((err as any)?.status ?? (err as any)?.statusCode);
+    const message = err instanceof Error ? err.message : String(err ?? '');
+    const lower = message.toLowerCase();
+    const isAuthFailure = statusCode === 401 || statusCode === 403
+      || lower.includes('bearer')
+      || lower.includes('token')
+      || lower.includes('authorization')
+      || lower.includes('auth');
+    if (!isAuthFailure) return next(err);
+    const status = statusCode === 403 || lower.includes('forbidden') || lower.includes('scope') ? 403 : 401;
+    res.status(status).json({
+      error: status === 403 ? 'forbidden' : 'unauthorized',
+      error_description: 'MCP authentication failed',
+    });
+  };
+  app.use('/mcp', codexRemoteMcpAuthErrorHandler);`;
+
+  for (const [label, anchor] of [['cors', corsBefore], ['token', tokenBefore], ['mcp auth error handler', mcpRouteAfter]]) {
     if (!source.includes(anchor)) {
       console.error(`GBrain remote HTTP safety patch failed: missing ${label} anchor.`);
       process.exit(65);
@@ -103,6 +132,7 @@ function ensureRemoteHttpSafetyPatch() {
 
   source = source
     .replace(corsBefore, corsAfter)
+    .replace(mcpRouteAfter, () => authErrorHandler)
     .replace(listenPattern, () => listenAfter)
     .replace(tokenBefore, () => '${adminTokenBlock}');
 

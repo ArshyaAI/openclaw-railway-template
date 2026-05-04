@@ -44,6 +44,38 @@ const tokenBefore = `║  Admin Token (paste into /admin login):              �
 ║  \${bootstrapToken.substring(0, 50)}  ║
 ║  \${bootstrapToken.substring(50).padEnd(50)}  ║`;
 
+const mcpRouteAfter = `    await transport.handleRequest(req, res, req.body);
+  });`;
+
+const authErrorHandler = `    await transport.handleRequest(req, res, req.body);
+  });
+
+  const codexRemoteMcpAuthErrorHandler = (err: unknown, _req: Request, res: Response, next: NextFunction) => {
+    if (res.headersSent) return next(err);
+    const statusCode = Number((err as any)?.status ?? (err as any)?.statusCode);
+    const message = err instanceof Error ? err.message : String(err ?? '');
+    const lower = message.toLowerCase();
+    const isAuthFailure = statusCode === 401 || statusCode === 403
+      || lower.includes('bearer')
+      || lower.includes('token')
+      || lower.includes('authorization')
+      || lower.includes('auth');
+    if (!isAuthFailure) return next(err);
+    const status = statusCode === 403 || lower.includes('forbidden') || lower.includes('scope') ? 403 : 401;
+    res.status(status).json({
+      error: status === 403 ? 'forbidden' : 'unauthorized',
+      error_description: 'MCP authentication failed',
+    });
+  };
+  app.use('/mcp', codexRemoteMcpAuthErrorHandler);`;
+
+if (!source.includes(mcpRouteAfter)) {
+  throw new Error('MCP auth error handler anchor not found');
+}
+if (!source.includes('codexRemoteMcpAuthErrorHandler')) {
+  source = source.replace(mcpRouteAfter, () => authErrorHandler);
+}
+
 if (!source.includes(tokenBefore)) {
   throw new Error('admin token block anchor not found');
 }

@@ -29,6 +29,37 @@ start_cron() {
   fi
 }
 
+install_astack_direct_minions_runtime() {
+  local source_dir="/app/patches"
+  local target_dir="/data/.openclaw/cron/bin"
+  local stamp
+
+  [ -d "$source_dir" ] || return 0
+  mkdir -p "$target_dir"
+  stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+
+  install_one() {
+    local name="$1"
+    local mode="$2"
+    local src="$source_dir/$name"
+    local dest="$target_dir/$name"
+
+    [ -f "$src" ] || return 0
+    if [ -f "$dest" ] && ! cmp -s "$src" "$dest"; then
+      cp -p "$dest" "$dest.bak.astack-$stamp"
+      echo "[start-astack] backed up existing direct-minions runtime $dest"
+    fi
+    if [ ! -f "$dest" ] || ! cmp -s "$src" "$dest"; then
+      cp "$src" "$dest"
+      chmod "$mode" "$dest"
+      echo "[start-astack] installed astack direct-minions runtime $dest"
+    fi
+  }
+
+  install_one "direct-minions-scheduler.mjs" 0755
+  install_one "openclaw-agent-job.sh" 0755
+}
+
 load_persistent_env() {
   local env_file="/data/.env"
 
@@ -204,6 +235,7 @@ schedule_post_boot_openclaw_gbrain_mcp() {
   ) &
 }
 
+install_astack_direct_minions_runtime
 restore_persisted_crons
 start_cron
 load_persistent_env

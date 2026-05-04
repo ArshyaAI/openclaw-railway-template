@@ -372,6 +372,8 @@ run_runtime_readonly() {
   run_step "cron names /etc/cron.d" ls -1 /etc/cron.d
   run_step "cron names /data/.openclaw/cron/system" ls -1 /data/.openclaw/cron/system
   run_step "direct-minions processes" "pgrep -af '^node /data/.openclaw/cron/bin/direct-minions-scheduler.mjs' || true"
+  run_step "direct-minions scheduler validate" "node /data/.openclaw/cron/bin/direct-minions-scheduler.mjs --validate"
+  run_step "direct-minions enabled agent wrappers" "node -e 'const fs=require(\"fs\"); const root=JSON.parse(fs.readFileSync(\"/data/.openclaw/cron/direct-minions/jobs.json\",\"utf8\")); const jobs=Array.isArray(root)?root:root.jobs||[]; const active=jobs.filter(j=>j.enabled!==false && String(j.command||\"\").includes(\"gbrain-submit-openclaw-agent-job.sh\")); console.log(JSON.stringify({enabled_agent_wrapper_count:active.length, enabled_agent_wrappers:active.map(j=>j.name)},null,2));'"
 }
 
 run_dead_jobs_readonly() {

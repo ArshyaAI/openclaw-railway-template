@@ -16,9 +16,15 @@ await expectUnauthorized('missing_token', {});
 await expectUnauthorized('bad_token', { Authorization: 'Bearer gbrain_bad_token_for_canary' });
 await expectCorsDefaultDeny();
 await expectDcrDisabled();
+await expectAdminRouteDenied();
+await expectExpiredTokenDenied();
+await expectRevokedClientDenied();
+await expectLogRedactionEvidence();
 
 const token = await getAccessToken();
 const authHeaders = { Authorization: `Bearer ${token}` };
+const readOnlyToken = await getAccessToken('read');
+const readOnlyHeaders = { Authorization: `Bearer ${readOnlyToken}` };
 
 await rpc('initialize', {
   protocolVersion: '2025-03-26',
@@ -33,6 +39,8 @@ if (exposedForbidden.length) {
   fail(`local-only tools exposed remotely: ${exposedForbidden.join(', ')}`);
 }
 evidence.push({ step: 'tools_list', status: 'PASS', count: toolNames.length });
+
+await expectReadOnlyWriteDenied(readOnlyHeaders);
 
 const sentinel = `GBRAIN_REMOTE_MCP_CANARY_${Date.now()}`;
 const body = [
@@ -82,13 +90,13 @@ function normalizeBaseUrl(raw) {
   return value;
 }
 
-async function getAccessToken() {
+async function getAccessToken(scopeOverride) {
   const bearer = process.env.GBRAIN_REMOTE_MCP_BEARER_TOKEN;
   if (bearer) return bearer;
 
   const clientId = process.env.GBRAIN_REMOTE_OAUTH_CLIENT_ID;
   const clientSecret = process.env.GBRAIN_REMOTE_OAUTH_CLIENT_SECRET;
-  const scope = process.env.GBRAIN_REMOTE_OAUTH_SCOPE || 'read write';
+  const scope = scopeOverride || process.env.GBRAIN_REMOTE_OAUTH_SCOPE || 'read write';
   if (!clientId || !clientSecret) {
     fail('set GBRAIN_REMOTE_MCP_BEARER_TOKEN or GBRAIN_REMOTE_OAUTH_CLIENT_ID/GBRAIN_REMOTE_OAUTH_CLIENT_SECRET');
   }
@@ -111,7 +119,7 @@ async function getAccessToken() {
   return json.access_token;
 }
 
-async function expectUnauthorized(name, headers) {
+async function expectUnauthorized(name, headers, { requireCleanStatus = true } = {}) {
   const res = await fetch(mcpUrl, {
     method: 'POST',
     headers: {
@@ -123,6 +131,9 @@ async function expectUnauthorized(name, headers) {
   });
   if (res.status < 400) {
     fail(`${name} expected non-2xx auth failure, got ${res.status}`);
+  }
+  if (requireCleanStatus && ![401, 403].includes(res.status)) {
+    fail(`${name} expected clean 401/403 auth failure, got ${res.status}`);
   }
   evidence.push({ step: name, status: 'PASS', http_status: res.status, clean_auth_status: [401, 403].includes(res.status) });
 }
@@ -163,6 +174,92 @@ async function expectDcrDisabled() {
     fail(`DCR expected non-2xx failure, got ${res.status}`);
   }
   evidence.push({ step: 'dcr_disabled', status: 'PASS', http_status: res.status });
+}
+
+async function expectAdminRouteDenied() {
+  const adminUrl = new URL('/admin/api/clients', baseUrl).toString();
+  const res = await fetch(adminUrl, {
+    headers: { Authorization: 'Bearer gbrain_bad_token_for_canary' },
+  });
+  if (![401, 403].includes(res.status)) {
+    fail(`admin route expected 401/403 without admin cookie, got ${res.status}`);
+  }
+  evidence.push({ step: 'admin_route_denial', status: 'PASS', http_status: res.status });
+}
+
+async function expectExpiredTokenDenied() {
+  const expired = process.env.GBRAIN_REMOTE_EXPIRED_MCP_BEARER_TOKEN;
+  if (!expired) {
+    evidence.push({ step: 'expired_token_denial', status: 'SKIP', reason: 'set GBRAIN_REMOTE_EXPIRED_MCP_BEARER_TOKEN to verify a real expired token' });
+    return;
+  }
+  await expectUnauthorized('expired_token_denial', { Authorization: `Bearer ${expired}` });
+}
+
+async function expectRevokedClientDenied() {
+  const clientId = process.env.GBRAIN_REMOTE_REVOKED_OAUTH_CLIENT_ID;
+  const clientSecret = process.env.GBRAIN_REMOTE_REVOKED_OAUTH_CLIENT_SECRET;
+  if (!clientId || !clientSecret) {
+    evidence.push({ step: 'revoked_client_denial', status: 'SKIP', reason: 'set GBRAIN_REMOTE_REVOKED_OAUTH_CLIENT_ID/SECRET to verify a real revoked client' });
+    return;
+  }
+  const res = await fetch(tokenUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'client_credentials',
+      client_id: clientId,
+      client_secret: clientSecret,
+      scope: 'read',
+    }),
+  });
+  if (res.status < 400) {
+    fail(`revoked client expected token mint denial, got ${res.status}`);
+  }
+  evidence.push({ step: 'revoked_client_denial', status: 'PASS', http_status: res.status });
+}
+
+async function expectLogRedactionEvidence() {
+  const logFile = process.env.GBRAIN_REMOTE_LOG_SAMPLE_FILE;
+  if (!logFile) {
+    evidence.push({ step: 'log_redaction', status: 'SKIP', reason: 'set GBRAIN_REMOTE_LOG_SAMPLE_FILE to scan a redacted live log sample' });
+    return;
+  }
+  const { readFileSync } = await import('node:fs');
+  const text = readFileSync(logFile, 'utf8');
+  const forbidden = [
+    /Admin Token \(paste into \/admin login\)/i,
+    /gbrain_(?:at|rt|cs|cl|code)_[A-Za-z0-9_-]+/,
+    /Bearer\s+[A-Za-z0-9._-]+/i,
+    /postgres(?:ql)?:\/\/\S+/i,
+    /sk-[A-Za-z0-9_-]{20,}/,
+  ];
+  const hit = forbidden.find(pattern => pattern.test(text));
+  if (hit) {
+    fail(`log redaction scan found forbidden pattern: ${hit}`);
+  }
+  evidence.push({ step: 'log_redaction', status: 'PASS' });
+}
+
+async function expectReadOnlyWriteDenied(headers) {
+  if (process.env.GBRAIN_REMOTE_MCP_BEARER_TOKEN) {
+    evidence.push({ step: 'read_only_write_denial', status: 'SKIP', reason: 'bearer canary cannot mint a scoped read-only token' });
+    return;
+  }
+  const result = await rpc('tools/call', {
+    name: 'put_page',
+    arguments: {
+      slug: `${canarySlug}-read-only-denial`,
+      content: 'This write should be denied for a read-only token.',
+      type: 'note',
+      title: 'Read-only denial canary',
+    },
+  }, headers);
+  const text = result.content?.map(part => part.text || '').join('\n') || '';
+  if (!result.isError || !text.includes('insufficient_scope')) {
+    fail(`read-only write denial expected insufficient_scope MCP error, got ${text.slice(0, 200)}`);
+  }
+  evidence.push({ step: 'read_only_write_denial', status: 'PASS' });
 }
 
 async function rpc(method, params, headers) {
