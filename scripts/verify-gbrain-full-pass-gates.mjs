@@ -4,8 +4,10 @@ import { spawnSync } from 'node:child_process';
 const args = new Set(process.argv.slice(2));
 const json = args.has('--json');
 const skipClaude = args.has('--skip-claude');
+const skipCodex = args.has('--skip-codex');
 const deadJobCutoff = new Date(process.env.GBRAIN_FULL_PASS_DEAD_JOB_CUTOFF || '2026-05-04T20:04:26Z');
 const burnInHoursRequired = Number(process.env.GBRAIN_FULL_PASS_BURN_IN_HOURS || '24');
+const codexCanaryTimeoutMs = Number(process.env.GBRAIN_CODEX_CANARY_TIMEOUT_MS || '900000');
 
 const gates = [];
 
@@ -16,6 +18,9 @@ await gate('openclaw_runtime_risk_logs', checkRuntimeRiskLogs());
 await gate('scheduler_dead_jobs_burn_in', checkSchedulerBurnIn());
 if (!skipClaude) {
   await gate('claude_code_shared_gbrain_canary', checkClaudeCanary());
+}
+if (!skipCodex) {
+  await gate('codex_shared_gbrain_canary', checkCodexCanary());
 }
 
 const blockers = gates.filter(g => g.status === 'BLOCKED' || g.status === 'FAIL');
@@ -28,6 +33,7 @@ const result = {
   warnings: warnings.map(g => ({ gate: g.name, reason: g.reason })),
   full_pass_requires: [
     'Claude Code canary PASS',
+    'Codex canary PASS',
     'scheduler burn-in window complete with no new dead shell jobs',
     'GBrain runtime doctor ok via consumed PR #619',
     'upstream PR #620 consumed so remote MCP auth is not astack-custom',
@@ -116,6 +122,13 @@ async function checkClaudeCanary() {
   if (payload.status === 'PASS') return { status: 'PASS', reason: 'Claude Code completed shared-GBrain canary', evidence: payload };
   if (payload.status === 'BLOCKED_QUOTA') return { status: 'BLOCKED', reason: payload.message || 'Claude quota blocked canary', evidence: payload };
   return { status: 'FAIL', reason: `Claude canary status=${payload.status || 'unknown'}`, evidence: payload };
+}
+
+async function checkCodexCanary() {
+  const out = run('npm', ['run', 'canary:gbrain-codex'], { allowFailure: true, timeout: codexCanaryTimeoutMs });
+  const payload = parseJson(stripNpmPrefix(out.stdout));
+  if (payload.status === 'PASS') return { status: 'PASS', reason: 'Codex completed shared-GBrain canary', evidence: payload };
+  return { status: 'FAIL', reason: `Codex canary status=${payload.status || 'unknown'}`, evidence: payload };
 }
 
 function summarizeUpdate(payload) {

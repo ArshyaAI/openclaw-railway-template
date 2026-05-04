@@ -38,7 +38,7 @@ No targeted command inspected, mutated, restarted, deployed, SSHed into, or tail
 
 ## Completion Audit Snapshot
 
-Checked at `2026-05-04T21:24:30Z`. Result: `NOT_FULL_PASS`.
+Checked at `2026-05-04T22:14:57Z`. Result: `NOT_FULL_PASS`.
 
 | Requirement | Evidence | Status |
 | --- | --- | --- |
@@ -47,8 +47,9 @@ Checked at `2026-05-04T21:24:30Z`. Result: `NOT_FULL_PASS`.
 | Remote MCP uses upstream `gbrain serve --http`, not a custom gateway | `services/gbrain-remote-mcp/start-gbrain-http.mjs` launches upstream HTTP serve with environment hardening and a temporary safety patch. | pass with concern |
 | Upstream GBrain owns core resolver/auth behavior | PR #619 and PR #620 are open and mergeable, not merged. | blocked |
 | Scheduler no longer creates OpenClaw agent-wrapper sessions for migrated jobs | Runtime validate reports `enabled_agent_wrapper_count=0`; disabled wrapper jobs remain disabled. | pass |
-| Scheduler quota/cooldown fix has enough burn-in | Gate runner reports only `1.3h/24h` burn-in complete, with no new dead jobs so far. | blocked |
+| Scheduler quota/cooldown fix has enough burn-in | Gate runner reports only `2.1h/24h` burn-in complete, with no new dead jobs so far. | blocked |
 | Claude Code accesses the shared GBrain with a real tool call | `claude mcp list` is connected, but `npm run canary:gbrain-claude` returns `BLOCKED_QUOTA` / `429` until 2am Europe/Zurich. | blocked |
+| Codex accesses the shared GBrain with real tool calls | `npm run canary:gbrain-codex` passed health, search, put/get, delete, and restore against the shared GBrain MCP. | pass |
 | Runtime GBrain doctor is `ok` | Runtime `gbrain doctor --fast --json` still reports `warnings` from 37 resolver routing misses on GBrain `0.26.6`. | blocked |
 | Latest safe GBrain version is used or explicitly pinned | `npm run check:gbrain-upstream -- --json` reports upstream master `058fe695756ed16e43916d907af3845338430156` / `0.26.7`; runtime is `f79cad0...` / `0.26.6`; Docker/verifier pins remain `9e2093...`. | blocked |
 | Local GBrain checkout is safe to update | `/Users/arshya/gbrain` is on `codex-gbrain-0.26.6-runtime-patches` with a dirty `src/cli.ts`; do not overwrite it during this sprint. | blocked |
@@ -92,6 +93,9 @@ Conclusion: AStack has a working and useful dogfood layer, including live Remote
 - Added `scripts/gbrain-claude-code-canary.sh` and npm script `canary:gbrain-claude`.
   - Runs the required Claude Code shared-GBrain get/search/write/delete/restore canary.
   - Returns machine-readable `BLOCKED_QUOTA` on Claude 429 instead of failing ambiguously.
+- Added `scripts/gbrain-codex-canary.sh` and npm script `canary:gbrain-codex`.
+  - Runs a local Codex shared-GBrain MCP canary for health, search, put/get, delete, and restore.
+  - Uses a GBrain-only Codex phase for health/search/write/get, then the normal local Codex policy for delete/restore/get because that is the policy users actually dogfood.
 - Added `scripts/verify-gbrain-full-pass-gates.mjs` and npm script `verify:gbrain-full-pass-gates`.
   - Aggregates the remaining FULL PASS gates into one machine-readable result.
   - Exits non-zero until Claude canary, scheduler burn-in, upstream PRs, and upgrade gates pass.
@@ -125,6 +129,7 @@ bash -n patches/start-astack.sh
 bash -n patches/openclaw-agent-job.sh
 bash -n scripts/verify-gbrain-openclaw-readiness.sh
 bash -n scripts/gbrain-remote-mcp-fixture-canary.sh
+bash -n scripts/gbrain-codex-canary.sh
 npm run test:openclaw-agent-job
 ```
 
@@ -422,6 +427,20 @@ gh pr comment 620 --repo garrytan/gbrain --body "<remote MCP auth readiness evid
 codex mcp list
 # gbrain: /Users/arshya/.bun/bin/gbrain serve - enabled
 
+npm run canary:gbrain-codex
+# checked at 2026-05-04T22:14:57Z through the full-pass gate runner
+# status=PASS
+# health_seen=true, search_seen=true, sentinel_seen=true, delete_restore_seen=true
+# proves local Codex can use the same shared GBrain via MCP, not only list it
+# note: the required sentinel is verified after restore; the pre-delete
+# get_page can be cancelled by Codex noninteractive safety without blocking
+# the canary because post-restore get_page proves write + restore.
+# note: script uses two Codex exec phases so unrelated remote MCP OAuth failures
+# do not make health/search/write flaky while delete/restore still uses
+# the real local Codex policy.
+```
+
+```bash
 gbrain --version
 # gbrain 0.26.6
 
@@ -457,15 +476,17 @@ npm run canary:gbrain-claude
 ```
 
 ```bash
-npm run verify:gbrain-full-pass-gates -- --json
-# checked at 2026-05-04T21:20:34Z
+npm run verify:gbrain-full-pass-gates -- --skip-claude --json
+# checked at 2026-05-04T22:14:57Z
 # status=BLOCKED
 # PASS: openclaw_runtime_risk_logs
+# PASS: codex_shared_gbrain_canary
 # BLOCKED: upstream_pr_619_resolver open/mergeable
 # BLOCKED: upstream_pr_620_http_auth open/mergeable
 # BLOCKED: update_flow_currentness runtime/pins behind upstream 0.26.7
-# BLOCKED: scheduler_dead_jobs_burn_in 1.3h/24h complete, no new dead jobs so far
-# BLOCKED: claude_code_shared_gbrain_canary quota reset 2am Europe/Zurich
+# BLOCKED: scheduler_dead_jobs_burn_in 2.1h/24h complete, no new dead jobs so far
+# Claude gate evaluated separately with npm run canary:gbrain-claude:
+# BLOCKED_QUOTA until 2am Europe/Zurich
 ```
 
 ## Rollback

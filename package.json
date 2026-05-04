@@ -16,6 +16,7 @@
     "canary:gbrain": "node scripts/gbrain-live-canary.mjs",
     "canary:gbrain-remote": "node scripts/gbrain-remote-mcp-canary.mjs",
     "canary:gbrain-remote-fixture": "bash scripts/gbrain-remote-mcp-fixture-canary.sh",
+    "canary:gbrain-codex": "bash scripts/gbrain-codex-canary.sh",
     "canary:gbrain-claude": "bash scripts/gbrain-claude-code-canary.sh",
     "dev:shell": "docker compose exec openclaw bash"
   },
