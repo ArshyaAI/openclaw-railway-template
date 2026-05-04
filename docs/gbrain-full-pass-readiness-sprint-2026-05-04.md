@@ -59,6 +59,9 @@ No targeted command inspected, mutated, restarted, deployed, SSHed into, or tail
 - Expanded `scripts/gbrain-remote-mcp-canary.mjs`.
   - Missing token, bad token, DCR disabled, CORS default-deny, admin-route denial, read-only write denial.
   - Env-backed checks for expired token, revoked client, and log redaction sample.
+- Added `scripts/gbrain-remote-mcp-fixture-canary.sh` and npm script `canary:gbrain-remote-fixture`.
+  - Creates short-lived Remote MCP OAuth fixture clients on the approved `gbrain-remote-mcp` service, runs the full OAuth-backed remote canary, and revokes the fixtures in cleanup.
+  - Refuses the forbidden NIKIN production service ID.
 - Added `scripts/check-gbrain-upstream.mjs` and npm script `check:gbrain-upstream`.
 - Added `scripts/gbrain-claude-code-canary.sh` and npm script `canary:gbrain-claude`.
   - Runs the required Claude Code shared-GBrain get/search/write/delete/restore canary.
@@ -94,6 +97,7 @@ node --check patches/direct-minions-scheduler.mjs
 bash -n patches/start-astack.sh
 bash -n patches/openclaw-agent-job.sh
 bash -n scripts/verify-gbrain-openclaw-readiness.sh
+bash -n scripts/gbrain-remote-mcp-fixture-canary.sh
 npm run test:openclaw-agent-job
 ```
 
@@ -132,6 +136,40 @@ GBRAIN_REMOTE_MCP_URL=https://gbrain-remote-mcp-production.up.railway.app \
 # log_redaction PASS, read_only_write_denial PASS
 # read_write_search_versions_delete_restore PASS
 # oauth_fixture_clients_revoked=true
+```
+
+```bash
+npm run canary:gbrain-remote-fixture
+# repeatable wrapper for the same Remote MCP OAuth fixture canary above
+# creates temporary OAuth clients on service beab847a-12bb-499e-a44c-bf5d1982924f
+# refuses forbidden service 63b84308-25d7-4b03-9c23-4d0d7239728f
+# revokes fixture clients through trap cleanup; does not print client secrets
+# checked at 2026-05-04T21:20:12Z
+# status=PASS
+# exposed_tool_count=38
+# missing_token=401, bad_token=401, expired_token_denial=401
+# revoked_client_denial=400
+# cors_default_deny PASS, dcr_disabled=404, admin_route_denial=404
+# log_redaction PASS, read_only_write_denial PASS
+# read_write_search_versions_delete_restore PASS
+# oauth_fixture_clients_revoked=true
+```
+
+```bash
+GBRAIN_REMOTE_RAILWAY_SERVICE_ID=63b84308-25d7-4b03-9c23-4d0d7239728f \
+  bash scripts/gbrain-remote-mcp-fixture-canary.sh
+# exit 2
+# {"status":"FAIL","error":"refusing forbidden service id"}
+```
+
+```bash
+rg --pcre2 -n \
+  'gbrain_(?:cs|at|rt|code)_[A-Za-z0-9_-]+|postgres(?:ql)?://|sk-[A-Za-z0-9_-]{20,}|Bearer\s+(?!gbrain_bad_token_for_canary)[A-Za-z0-9._-]+' \
+  docs/gbrain-full-pass-readiness-sprint-2026-05-04.md \
+  scripts/gbrain-remote-mcp-fixture-canary.sh \
+  package.json \
+  scripts/gbrain-remote-mcp-canary.mjs
+# no matches
 ```
 
 ```bash
@@ -365,13 +403,13 @@ npm run canary:gbrain-claude
 
 ```bash
 npm run verify:gbrain-full-pass-gates -- --json
-# checked at 2026-05-04T21:12:44Z
+# checked at 2026-05-04T21:20:34Z
 # status=BLOCKED
 # PASS: openclaw_runtime_risk_logs
 # BLOCKED: upstream_pr_619_resolver open/mergeable
 # BLOCKED: upstream_pr_620_http_auth open/mergeable
 # BLOCKED: update_flow_currentness runtime/pins behind upstream 0.26.7
-# BLOCKED: scheduler_dead_jobs_burn_in 1.1h/24h complete, no new dead jobs so far
+# BLOCKED: scheduler_dead_jobs_burn_in 1.3h/24h complete, no new dead jobs so far
 # BLOCKED: claude_code_shared_gbrain_canary quota reset 2am Europe/Zurich
 ```
 
