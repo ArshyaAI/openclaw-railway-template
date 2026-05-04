@@ -1,7 +1,7 @@
 # GBrain / OpenClaw Readiness Runbook
 
 Status: `PASS_WITH_CONCERNS`
-Date: 2026-05-03
+Date: 2026-05-04
 Scope: core dogfood readiness for this target service, not perfect/full-feature
 readiness.
 
@@ -18,7 +18,7 @@ service.
 - Environment ID: `614198f2-f7ed-4756-ae83-e0dd23943c9d`
 - Service: `openclaw-railway-template`
 - Service ID: `6f333a2b-07d9-4219-8531-3b96fbc6a2f9`
-- Current deployment: `4dd37433-58ce-46b6-b8f7-36aa8fd54480`
+- Current deployment: `534de0ca-dd28-4127-b521-f8c8413c6e43`
 
 Forbidden non-target service:
 
@@ -37,12 +37,13 @@ Forbidden non-target service:
 | GBrain supervisor | Running from boot, PID `81`, `crashes_24h=0` | `PASS` |
 | Full doctor | `status=warnings`, `health_score=90`, DB/pgvector/RLS/schema/embeddings/jsonb/body/queue ok | `PASS_WITH_WARNINGS` |
 | OpenClaw MCP config | `gbrain` stdio MCP configured via `/data/.bun/bin/gbrain serve` | `PASS` |
+| Boot MCP persistence | Deployment `534de0ca-dd28-4127-b521-f8c8413c6e43`; runtime `alphaclaw.js` contains `codexEnsureGbrainMcpBootConfig`; fresh Gateway loaded `gbrain__*` tools without manual repair | `PASS` |
 | MCP smoke | Client listed `41` tools, including `search`, `query`, `get_page` | `PASS` |
-| OpenClaw agent canary | Final run `926ca872-5d8c-4803-aa13-d2d8bab5f42c`, `status=ok`, used `gbrain__query`, `gbrain__search`, and `gbrain__list_pages` with no fallback | `PASS` |
+| OpenClaw agent canary | Fresh post-deploy run `443741c2-6ba3-4ef0-a9d1-8be70a0d62c9`, `status=ok`, used `gbrain__query`, failures `0`, no shell fallback | `PASS` |
 | Broad MCP canary | Run `b8e37a51-2e74-408a-8562-05be43d695fc`, `status=ok`, used `gbrain__get_health`, `gbrain__get_stats`, `gbrain__search`, `gbrain__get_page`, `gbrain__get_links`, `gbrain__get_backlinks`, and `gbrain__get_tags`; failures `0` | `PASS` |
-| Runtime logs | Last 10m after broad canary: `current_total_lines=6`, `token_mismatch=0`, `sessions_store=0`, `rate_limit=0` | `PASS` |
+| Runtime logs | Last 15m after boot-patch deploy: `current_total_lines=56`, `token_mismatch=0`, `sessions_store=0`, `rate_limit=0` | `PASS` |
 | Dirty/untracked Markdown sync | Synthetic allowlisted source indexed dirty tracked and untracked Markdown without false `up_to_date` | `PASS` |
-| Direct-minions scheduler | Process `236 node /data/.openclaw/cron/bin/direct-minions-scheduler.mjs`; active OpenClaw agent wrappers `0`; direct GBrain shell jobs `11`; queue `0 waiting, 0 active, 0 stalled` | `PASS` |
+| Direct-minions scheduler | Process `265 node /data/.openclaw/cron/bin/direct-minions-scheduler.mjs`; active OpenClaw agent wrappers `0`; direct GBrain shell jobs remain enabled; queue `0 waiting, 0 active, 0 stalled` | `PASS` |
 
 ## Known Concerns
 
@@ -53,6 +54,11 @@ Forbidden non-target service:
 - `gbrain doctor --json` still warns on resolver routing fixtures and
   `frontmatter_integrity` (`4129` issues across `21` sources). DB, schema,
   embeddings, JSONB, markdown body completeness, and queue health are ok.
+- Boot persistence is now proven by deployment `534de0ca-dd28-4127-b521-f8c8413c6e43`.
+  The template patches AlphaClaw after its remote config restore and before
+  Gateway launch so the Gateway starts with `mcp.servers.gbrain` already in
+  memory. Earlier post-boot-only repair was insufficient because the Gateway
+  had already materialized its MCP catalog.
 - Seven direct-minions jobs that called
   `gbrain-submit-openclaw-agent-job.sh` were disabled in runtime state to stop
   scheduled OpenClaw agent-wrapper quota exposure. Backup:
@@ -69,7 +75,7 @@ Forbidden non-target service:
   not running.
 - Oracle Pro final gate agreed that `PASS_WITH_CONCERNS` is defensible for this
   target, but rejected any claim of perfect/full-feature readiness until doctor
-  warnings, upstream plugin packaging, and restart/soak proof are addressed or
+  warnings, upstream plugin packaging, and longer soak proof are addressed or
   waived.
 
 ## Safe Verification Commands
@@ -113,7 +119,8 @@ railway ssh --project fbdb217b-060f-4f1e-8697-08a6288a19c4 \
 
 Runtime deployment rollback target:
 
-- Previous stable deployment: `a55d9794-0ecb-4ff9-8bd4-ce9462381c41`
+- Previous boot-patch predecessor: `d08dcecb-c0a2-496e-814b-50e37b050262`
+- Pre-upgrade stable deployment: `a55d9794-0ecb-4ff9-8bd4-ce9462381c41`
 
 GBrain runtime backups:
 
