@@ -32,8 +32,8 @@ No command in this sprint inspected or mutated the forbidden service.
 | 1. Remote MCP hardening | code-ready, live remote deploy blocked by target scope | Wrapper patch now maps `/mcp` auth failures to `401/403`, wraps the async `/mcp` handler with `try/catch next(err)`, and canary now hard-fails if bad token returns non-401/403. Current live remote still fails with `bad_token expected clean 401/403 auth failure, got 500`. Upstream issue: <https://github.com/garrytan/gbrain/issues/616>. |
 | 2. Scheduler/quota fix | live patch deployed, post-slot clean, 24-48h monitoring pending | Deployment `44b4da3f-da1e-46b0-b640-d4e42ba731d8` installed the corrected astack-owned scheduler/wrapper. Runtime validate: `enabled_cron=12`, `disabled_cron=7`; scheduler startup logged `skip_disabled_startup` for all 7 disabled OpenClaw-agent wrapper jobs. A post-critical-slot watch at `2026-05-04T20:04:26Z` found no new dead shell jobs after historical job `1781`; fresh logs had 0 token mismatch, 0 session-store churn, and 0 rate-limit lines. `openclaw-agent-job.sh` now defaults to `openai/gpt-5.4` if intentionally enabled and preserves failure exit codes across no-fallback, fallback-success, and fallback-fail paths. |
 | 3. Claude Code canary | blocked | `claude mcp list` shows `gbrain` connected, but `claude --print ... mcp__gbrain__get_page` returned `You've hit your limit - resets 2am (Europe/Zurich)`. |
-| 4. Doctor warnings upstream route | upstream issue filed | Runtime doctor still warns on 37 shipped skill routing misses. Upstream issue: <https://github.com/garrytan/gbrain/issues/617>. |
-| 5. Update flow automation | pass with runtime SHA concern | Added `npm run check:gbrain-upstream`. It checks upstream SHA/package version, Docker/verifier pins, local checkout, and runtime SHA/version. Current output warns because runtime checkout SHA is `f79cad0d...` while upstream master is `9e2093f...`, but package version is `0.26.6`. |
+| 4. Doctor warnings upstream route | upstream PR open | Runtime doctor still warns on 37 shipped skill routing misses while pinned to GBrain `0.26.6`. Upstream issue: <https://github.com/garrytan/gbrain/issues/617>. Fix PR: <https://github.com/garrytan/gbrain/pull/619>. In the upstream worktree, the PR makes `resolver_health` `ok` and `routing-eval` 58/58. |
+| 5. Update flow automation | pass with version drift concern | Added `npm run check:gbrain-upstream`. It checks upstream SHA/package version, Docker/verifier pins, local checkout, and runtime SHA/version. Current output warns because upstream master is now `058fe695756ed16e43916d907af3845338430156` / `0.26.7`, while Docker/verifier pins remain `9e2093fc9bb6cb46520e58b0c95b807e788d9606` and runtime remains GBrain `0.26.6`. Upgrade remains approval-gated. |
 | 6. Remote MCP product interface | partial | astack keeps upstream `gbrain serve --http` wrapper and has canaries/docs/rollback. Live remote service hardening deploy needs explicit scope expansion because this sprint's safety target was only `openclaw-railway-template`. |
 
 ## Changes Made
@@ -121,10 +121,10 @@ tail -80 /data/.openclaw/cron/direct-minions/logs/scheduler.log
 ```bash
 npm run check:gbrain-upstream -- --json
 # status=WARN
-# upstream sha/package: 9e2093fc9bb6cb46520e58b0c95b807e788d9606 / 0.26.6
-# docker/verifier pins match upstream
+# upstream sha/package: 058fe695756ed16e43916d907af3845338430156 / 0.26.7
+# docker/verifier pins: 9e2093fc9bb6cb46520e58b0c95b807e788d9606 / 0.26.6 lineage
 # runtime version 0.26.6
-# warning: runtime checkout SHA f79cad0d... differs from upstream 9e2093f...
+# warning: runtime checkout SHA f79cad0d... and runtime version 0.26.6 differ from upstream
 ```
 
 ```bash
@@ -157,6 +157,18 @@ sleep 1320 && npm run verify:gbrain -- --dead-jobs-readonly && \
 ```
 
 ```bash
+date -u '+%Y-%m-%dT%H:%M:%SZ' && \
+  GBRAIN_VERIFY_SINCE=60m npm run verify:gbrain -- --railway-current && \
+  npm run verify:gbrain -- --dead-jobs-readonly
+# checked at 2026-05-04T20:27:19Z
+# deployment 44b4da3f-da1e-46b0-b640-d4e42ba731d8 SUCCESS
+# current_token_mismatch_lines=0
+# current_sessions_store_lines=0
+# current_rate_limit_lines=0
+# latest dead jobs remain historical: 1781, 1773, 1764, 1747, 1478
+```
+
+```bash
 /Users/arshya/.oracle/bin/oracle-pro review ... --run --json
 # status=ok
 # recommendationSummary=Keep PASS_WITH_CONCERNS
@@ -179,6 +191,24 @@ grep -n "fallback_err_file\\|OPENCLAW_AGENT_JOB_DATA_HOME\\|fallback_status\\|op
   /data/.openclaw/cron/bin/openclaw-agent-job.sh
 # runtime wrapper contains OPENCLAW_AGENT_JOB_DATA_HOME, fallback_err_file,
 # fallback_status, and default openai/gpt-5.4
+```
+
+```bash
+# upstream GBrain worktree: /tmp/gbrain-resolver-routing-fix
+bun run src/cli.ts doctor --fast --json | jq '.checks[] | select(.name=="resolver_health")'
+# resolver_health status=ok, message="39 skills, all reachable"
+
+bun run src/cli.ts routing-eval --skills-dir skills --json
+# ok=true, totalCases=58, passed=58, missed=0, ambiguous=0, falsePositives=0
+
+HOME=$(mktemp -d /tmp/gbrain-test-home.XXXXXX) \
+  env -u OPENCLAW_WORKSPACE -u OPENCLAW_HOME -u GBRAIN_SKILLS_DIR \
+  bun test test/resolver.test.ts test/routing-eval.test.ts \
+    test/check-resolvable.test.ts test/check-resolvable-cli.test.ts
+# 161 pass, 0 fail
+
+gh pr view 619 --repo garrytan/gbrain --json number,title,state,url
+# #619 fix: align resolver routing fixtures [OPEN]
 ```
 
 ```bash
@@ -213,4 +243,6 @@ Remote MCP rollback:
 2. Re-run remote MCP canary with a valid OAuth client and optional negative-test fixtures for expired token, revoked client, and log sample.
 3. Re-run Claude Code real MCP canary after quota reset.
 4. Observe 24-48h that no new dead shell jobs are created from disabled OpenClaw-agent wrapper jobs or model cooldown.
-5. Wait for or contribute upstream fixes for GBrain issues #616 and #617; until then, status remains `PASS_WITH_CONCERNS`, not FULL PASS.
+5. Land or consume upstream GBrain PR #619 so runtime doctor can move from shipped resolver warnings to `ok`.
+6. Decide and run the approval-gated GBrain upgrade path from runtime `0.26.6` to latest safe upstream `0.26.7+` after backup, migrations, full doctor, and direct/OpenClaw/remote/local canaries.
+7. Wait for or contribute upstream fix for GBrain issue #616; until then, status remains `PASS_WITH_CONCERNS`, not FULL PASS.
