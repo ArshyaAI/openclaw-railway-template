@@ -139,7 +139,7 @@ railway ssh --project fbdb217b-060f-4f1e-8697-08a6288a19c4 \
 
 ```bash
 GBRAIN_VERIFY_SINCE=30m npm run verify:gbrain -- --railway-current
-# checked after remote MCP deployment
+# checked after remote MCP deployment and again at 2026-05-04T21:05:37Z
 # openclaw-railway-template deployment 44b4da3f-da1e-46b0-b640-d4e42ba731d8 SUCCESS
 # current_token_mismatch_lines=0
 # current_sessions_store_lines=0
@@ -178,6 +178,7 @@ tail -80 /data/.openclaw/cron/direct-minions/logs/scheduler.log
 
 ```bash
 npm run check:gbrain-upstream -- --json
+# checked at 2026-05-04T21:05:37Z
 # status=WARN
 # upstream sha/package: 058fe695756ed16e43916d907af3845338430156 / 0.26.7
 # docker/verifier pins: 9e2093fc9bb6cb46520e58b0c95b807e788d9606 / 0.26.6 lineage
@@ -343,6 +344,7 @@ claude mcp list
 ```bash
 claude --print --output-format json --permission-mode bypassPermissions \
   --allowedTools mcp__gbrain__get_page -- "<gbrain get_page canary>"
+# checked at 2026-05-04T23:04:53+02:00
 # blocked: You've hit your limit - resets 2am (Europe/Zurich)
 ```
 
