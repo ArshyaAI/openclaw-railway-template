@@ -1222,3 +1222,13 @@ Rollback updates:
 4. Land or consume upstream GBrain PR #626 so source-scoped stale embedding is not a custom cherry-pick. Current GitHub permission on `garrytan/gbrain` is `READ`; AStack cannot merge these PRs directly from this account.
 5. Move from custom cut `de11d4c858b1a880931c008fbee3ceef92a8329a` back to an upstream-clean SHA after PRs #619/#620/#626 land or are otherwise consumed by `garrytan/gbrain`.
 6. Decide separately whether to clean/update the local source checkout `/Users/arshya/gbrain`; the global local binary is already `0.27.0`, but that checkout remains dirty/ahead and was intentionally preserved.
+
+2026-05-05 follow-up:
+
+- Refreshed upstream PR state at `2026-05-05T07:38Z`: PRs #619, #620, and #626 are all still `OPEN` and `MERGEABLE`; no checks reported on their head branches.
+- `garrytan/gbrain` viewer permission for this account is `READ`, so AStack cannot merge the PRs directly.
+- Added live downstream evidence comments to make the upstream merge path easier:
+  - #619 resolver: https://github.com/garrytan/gbrain/pull/619#issuecomment-4377379145
+  - #620 HTTP auth: https://github.com/garrytan/gbrain/pull/620#issuecomment-4377379146
+  - #626 stale embedding: https://github.com/garrytan/gbrain/pull/626#issuecomment-4377379142
+- `GBRAIN_VERIFY_SINCE=5m npm run verify:gbrain -- --railway-current` at `2026-05-05T07:39Z`: target service `openclaw-railway-template` deploy `9a87eb62-612d-4bdf-9ed7-b99c495edfdc`, status `SUCCESS`, risk log counts all `0`.
