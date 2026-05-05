@@ -61,6 +61,34 @@ Checked at `2026-05-05T00:56:53Z`. Result: `NOT_FULL_PASS`.
 
 Conclusion: AStack has a working and useful dogfood layer, including live Remote MCP/OAuth, runtime GBrain `0.26.7`, and real shared-GBrain canaries from Claude Code and Codex. The broad frontmatter doctor blocker and stale-embedding blocker are fixed in the live target service. FULL PASS remains blocked by upstream PR landing/consumption, scheduler burn-in, the runtime cherry-pick, the new upstream `0.26.8` currentness delta, and the remaining resolver doctor warning.
 
+## Prompt-to-Artifact Checklist
+
+| Goal requirement | Artifact or command evidence | Coverage |
+| --- | --- | --- |
+| Start from read-only baseline and correct target | `Scope` section, `verify:gbrain -- --railway-current`, `verify:gbrain -- --dead-jobs-readonly`, target IDs hard-coded in verifiers. | pass |
+| Create branch `astack/gbrain-full-pass-readiness` | Current repo branch and pushed commits on `fork/astack/gbrain-full-pass-readiness`. | pass |
+| Hunt-first diagnosis with six buckets | `Hunt-First Diagnosis` section. | pass |
+| Remote MCP bad bearer tokens return `401/403`, not `500` | `services/gbrain-remote-mcp/start-gbrain-http.mjs`, `scripts/gbrain-remote-mcp-canary.mjs`, `scripts/gbrain-remote-mcp-fixture-canary.sh`, latest full gate `remote_mcp_oauth_fixture_canary`. | pass in astack, upstream PR #620 pending |
+| Remote MCP canaries cover missing/bad/expired/revoked/read-only/admin/DCR/CORS/log-redaction | Latest full gate evidence at `2026-05-05T00:56:53Z`: all named steps PASS, fixture clients revoked. | pass |
+| Upstream GBrain issue/PR opened for auth behavior | Issue #616 and PR #620. | pass, not merged |
+| Scheduler respects disabled migrated OpenClaw-agent jobs | `patches/direct-minions-scheduler.mjs`, `patches/start-astack.sh`, runtime validate `enabled_agent_wrapper_count=0`. | pass |
+| Scheduler shell-job fallback/skip/backoff path exists | `patches/openclaw-agent-job.sh`, `scripts/test-openclaw-agent-job.sh`, `npm run test:openclaw-agent-job`. | pass |
+| Scheduler done means 24-48h no new dead jobs | Latest full gate has no new dead jobs but only `4.9h/24h` burn-in. | blocked |
+| Claude Code uses shared live GBrain with real toolcalls | `scripts/gbrain-claude-code-canary.sh`, latest full gate `claude_code_shared_gbrain_canary` PASS with get/search/write/delete/restore and direct final-state verification. | pass |
+| Codex uses shared live GBrain with real toolcalls | `scripts/gbrain-codex-canary.sh`, latest full gate `codex_shared_gbrain_canary` PASS with health/search/write/read/delete/restore and direct final-state verification. | pass |
+| Resolver doctor warnings investigated and routed upstream | Issue #617 and PR #619; runtime doctor gate still warns until consumed. | blocked |
+| FULL PASS requires `gbrain doctor --json` ok | Latest full gate `runtime_gbrain_doctor` status `warnings`, `resolver_health` only. | blocked |
+| `check-gbrain-upstream` exists and compares upstream/runtime/local/pins | `scripts/check-gbrain-upstream.mjs`, npm script `check:gbrain-upstream`, latest full gate `update_flow_currentness`. | pass script, blocked currentness |
+| Do not rely only on `gbrain check-update --json` | `check:gbrain-upstream` reads GitHub SHA/package, npm advisory package, runtime SHA/version, local checkout, Docker/verifier pins. | pass |
+| Upgrade is approval-gated with backup/migrate/doctor/canaries/rollback | `scripts/gbrain-runtime-upgrade-gate.mjs`, npm script `upgrade:gbrain-runtime`, rollback section. | pass gate, upgrade not executed to `0.26.8` |
+| Custom runtime cut cannot execute accidentally | `upgrade:gbrain-runtime` requires normal approval, custom approval, and explicit fetch URL/ref for non-upstream SHA. | pass |
+| Remote MCP remains upstream `gbrain serve --http`, no custom gateway | `services/gbrain-remote-mcp/start-gbrain-http.mjs`; report states astack owns deploy/env/token/canary/rollback only. | pass with upstream concern |
+| No forbidden NIKIN production access | Target guards in fixture/full-pass scripts; report states no targeted forbidden service inspect/mutate/restart/deploy/SSH/logs. | pass |
+| No secrets printed, stored, committed, or exfiltrated | `secret_scan_full_diff_and_artifacts` PASS, fixture canary revokes clients and redacts secrets. | pass |
+| Runtime mutations/restarts/deploys are checkpointed | Runtime upgrade/frontmatter/source-patch scripts require explicit approval and record backup/rollback/canaries. | pass |
+| Final deliverable includes 6-workstream table, commands/evidence, files changed, deploy/restart status, risks, rollback, dogfood commands | `Workstream Status`, `Command Evidence`, `Changes Made`, `Rollback`, `Next Dogfood Commands`, `Remaining FULL PASS Gates`. | pass |
+| Do not claim FULL PASS unless all gates pass | Report status remains `PASS_WITH_CONCERNS` / `FULL_PASS_BLOCKED`; latest full gate status `BLOCKED`. | pass |
+
 ## Changes Made
 
 - Added `patches/direct-minions-scheduler.mjs`.
@@ -905,6 +933,31 @@ Remote MCP rollback:
 
 - Roll Railway service `gbrain-remote-mcp` back from `aa3baa40-a303-4bc0-890f-99a8120cbf69` to previous known-good deployment `20fbbae5-5abd-47d5-b95a-7745a14769e6`.
 - If remote MCP exposure must be stopped immediately, pause/remove only `gbrain-remote-mcp`; do not roll back the whole Railway project and do not touch `openclaw-railway-template`.
+
+## Next Dogfood Commands
+
+Safe read-only/full-canary commands from the runtime repo:
+
+```bash
+npm run verify:gbrain-full-pass-gates -- --json
+npm run canary:gbrain
+npm run canary:gbrain-remote-fixture
+npm run canary:gbrain-codex
+npm run canary:gbrain-claude
+npm run check:gbrain-upstream -- --json
+npm run upgrade:gbrain-runtime -- --json
+```
+
+Useful shared-GBrain queries:
+
+```bash
+gbrain search "gbrain openclaw readiness" --limit 5
+gbrain query "What are the current GBrain/OpenClaw full-pass blockers?"
+gbrain get "system/canaries/gbrain-codex-canary-2026-05-05"
+gbrain get "system/canaries/gbrain-claude-code-canary-2026-05-05"
+```
+
+The runtime mutation command remains intentionally absent from this section. Use `npm run upgrade:gbrain-runtime -- --json` first; execution requires the approval phrases and rollback/canary plan described above.
 
 ## Remaining FULL PASS Gates
 
