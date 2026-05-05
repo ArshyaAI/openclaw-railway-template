@@ -1055,7 +1055,9 @@ Runtime deployment status:
   - Result stderr included `event:"skipped_external_quota"`, `class:"x_api_credits_depleted"`, `original_exit:1`.
 - Gate after deploy:
   - `GBRAIN_FULL_PASS_DEAD_JOB_CUTOFF=2026-05-05T05:55:53Z npm run verify:gbrain-full-pass-gates -- --skip-claude --skip-codex --skip-direct --skip-remote --json`
-  - status `BLOCKED`, not `FAIL`; scheduler burn-in `0.05h/24h`, no new dead jobs after cutoff.
+  - status `BLOCKED`, not `FAIL`; scheduler burn-in `0.17h/24h`, no new dead jobs after cutoff.
+  - New automated gate `runtime_shell_quota_guard`: `PASS`.
+  - Gate evidence: approved service ID matched, runner/submit scripts executable, submit routes through runner, `x-bookmarks-daily` is enabled and uses the submit wrapper, and canary job `1941` completed through the runner with `skipped_external_quota` / `x_api_credits_depleted`.
 - Post-deploy direct GBrain live canary:
   - Command: `npm run canary:gbrain`
   - Status: `PASS`
@@ -1071,7 +1073,7 @@ Runtime deployment status:
 
 ## Remaining FULL PASS Gates
 
-1. Complete 24-48h scheduler burn-in from cutoff `2026-05-05T05:55:53Z`. Latest gate at `2026-05-05T05:59:05Z` reports `0.05h/24h` complete and no new dead jobs after cutoff.
+1. Complete 24-48h scheduler burn-in from cutoff `2026-05-05T05:55:53Z`. Latest gate at `2026-05-05T06:05:47Z` reports `0.17h/24h` complete and no new dead jobs after cutoff.
 2. Land or consume upstream GBrain PR #619 so runtime doctor can move from shipped resolver warnings to `ok`.
 3. Land or consume upstream GBrain PR #620 so invalid/expired MCP bearer tokens return clean OAuth auth failures from upstream, not only from the astack wrapper.
 4. Land or consume upstream GBrain PR #626 so runtime source-scoped stale embedding is not a custom cherry-pick.

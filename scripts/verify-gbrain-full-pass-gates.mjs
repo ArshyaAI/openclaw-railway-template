@@ -42,6 +42,7 @@ if (!skipDirect) {
 }
 await gate('runtime_gbrain_doctor', checkRuntimeDoctor());
 await gate('openclaw_runtime_risk_logs', checkRuntimeRiskLogs());
+await gate('runtime_shell_quota_guard', checkRuntimeShellQuotaGuard());
 await gate('scheduler_dead_jobs_burn_in', checkSchedulerBurnIn());
 await gate('secret_scan_full_diff_and_artifacts', checkSecretScan());
 
@@ -58,6 +59,7 @@ const result = {
     'Codex canary PASS',
     'Direct GBrain live canary PASS',
     'Remote MCP/OAuth fixture canary PASS',
+    'runtime shell quota guard installed and proven on the approved target service',
     'scheduler burn-in window complete with no new dead shell jobs',
     'GBrain runtime doctor --json status ok',
     'upstream PR #619 consumed so resolver doctor warnings are not shipped',
@@ -248,6 +250,115 @@ async function checkSchedulerBurnIn() {
     };
   }
   return { status: 'PASS', reason: `burn-in ${burnInHours.toFixed(1)}h complete; no new dead jobs`, evidence: { cutoff: deadJobCutoff.toISOString(), burnInHours: Number(burnInHours.toFixed(2)) } };
+}
+
+async function checkRuntimeShellQuotaGuard() {
+  assertAllowedService(targetServiceId, targetServiceName);
+  const remote = [
+    'env HOME=/data GBRAIN_HOME=/data BRAIN_REPO=/data/brain BUN_INSTALL=/data/.bun PATH=/data/.bun/bin:/app/node_modules/.bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
+    'bash -lc',
+    quote(`node <<'NODE'
+const fs = require('node:fs');
+const cp = require('node:child_process');
+
+const runner = '/data/.openclaw/cron/bin/astack-shell-job-runner.sh';
+const submit = '/data/.openclaw/cron/bin/gbrain-submit-shell-job.sh';
+const manifestPath = '/data/.openclaw/cron/direct-minions/jobs.json';
+
+function read(file) {
+  try {
+    return fs.readFileSync(file, 'utf8');
+  } catch {
+    return '';
+  }
+}
+
+function fileInfo(file) {
+  try {
+    const stat = fs.statSync(file);
+    return { exists: true, executable: Boolean(stat.mode & 0o111), size: stat.size };
+  } catch {
+    return { exists: false, executable: false, size: 0 };
+  }
+}
+
+const runnerText = read(runner);
+const submitText = read(submit);
+let jobs = [];
+try {
+  const root = JSON.parse(read(manifestPath));
+  jobs = Array.isArray(root) ? root : root.jobs || [];
+} catch {}
+const xBookmarks = jobs.find((job) => job.name === 'x-bookmarks-daily');
+
+let canaryJob = null;
+try {
+  const text = cp.execFileSync('/data/.bun/bin/gbrain', ['jobs', 'get', '1941'], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'ignore'],
+    timeout: 30_000,
+  });
+  canaryJob = {
+    id: 1941,
+    completed: /Job #1941: shell \\(COMPLETED\\)/.test(text),
+    used_runner: text.includes('astack-shell-job-runner.sh'),
+    skipped_external_quota: text.includes('skipped_external_quota'),
+    x_api_credits_depleted: text.includes('x_api_credits_depleted'),
+  };
+} catch {}
+
+console.log(JSON.stringify({
+  service_name: '${targetServiceName}',
+  service_id: '${targetServiceId}',
+  runner: {
+    ...fileInfo(runner),
+    has_skip_marker: runnerText.includes('skipped_external_quota'),
+    has_quota_class: runnerText.includes('x_api_credits_depleted'),
+  },
+  submit: {
+    ...fileInfo(submit),
+    routes_to_runner: submitText.includes('astack-shell-job-runner.sh'),
+    submits_shell_job: submitText.includes('jobs submit shell'),
+  },
+  x_bookmarks_daily: {
+    present: Boolean(xBookmarks),
+    enabled: Boolean(xBookmarks && xBookmarks.enabled !== false),
+    command_uses_submit_wrapper: Boolean(xBookmarks?.command?.includes('gbrain-submit-shell-job.sh')),
+  },
+  canary_job_1941: canaryJob,
+}, null, 2));
+NODE`),
+  ].join(' ');
+  const out = run('railway', [
+    'ssh',
+    '--project', targetProjectId,
+    '--environment', targetEnvironment,
+    '--service', targetServiceId,
+    remote,
+  ], { timeout: 180_000 });
+  const evidence = parseLooseJson(out.stdout);
+  const checks = [
+    evidence.service_id === targetServiceId,
+    evidence.runner?.exists,
+    evidence.runner?.executable,
+    evidence.runner?.has_skip_marker,
+    evidence.runner?.has_quota_class,
+    evidence.submit?.exists,
+    evidence.submit?.executable,
+    evidence.submit?.routes_to_runner,
+    evidence.submit?.submits_shell_job,
+    evidence.x_bookmarks_daily?.present,
+    evidence.x_bookmarks_daily?.enabled,
+    evidence.x_bookmarks_daily?.command_uses_submit_wrapper,
+    evidence.canary_job_1941?.completed,
+    evidence.canary_job_1941?.used_runner,
+    evidence.canary_job_1941?.skipped_external_quota,
+    evidence.canary_job_1941?.x_api_credits_depleted,
+  ];
+  if (checks.every(Boolean)) {
+    return { status: 'PASS', reason: 'runtime shell quota guard installed and proven by canary job 1941', evidence };
+  }
+  return { status: 'BLOCKED', reason: 'runtime shell quota guard evidence incomplete', evidence };
 }
 
 async function checkClaudeCanary() {
