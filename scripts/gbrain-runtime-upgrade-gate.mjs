@@ -15,6 +15,7 @@ const execute = args.has('--execute');
 const json = args.has('--json');
 const upstreamSha = readUpstreamSha();
 const targetSha = process.env.GBRAIN_RUNTIME_UPGRADE_SHA || upstreamSha;
+const targetPackageVersion = await readGitHubPackageVersion(targetSha);
 const isCustomRuntimeCut = targetSha !== upstreamSha;
 const customFetchDeclared = !isCustomRuntimeCut || Boolean(
   process.env.GBRAIN_RUNTIME_UPGRADE_FETCH_URL && process.env.GBRAIN_RUNTIME_UPGRADE_REF,
@@ -50,6 +51,7 @@ const base = {
   current,
   upstream_sha: upstreamSha,
   target_sha: targetSha,
+  target_package_version: targetPackageVersion,
   target_is_upstream_master: !isCustomRuntimeCut,
   fetch: {
     source: fetchSource,
@@ -60,14 +62,14 @@ const base = {
     'mutates only /data/gbrain and migration state on the approved OpenClaw target service',
     'does not restart, redeploy, or touch the forbidden NIKIN production service',
     'runs GBrain schema/orchestrator migrations against the configured shared brain',
-    'target GBrain 0.26.8 includes migration v35, which installs a Postgres event trigger and backfills RLS on non-exempt public tables',
+    `target GBrain ${targetPackageVersion || targetSha.slice(0, 7)} includes current upstream migrations; migration v35 installs a Postgres event trigger and backfills RLS on non-exempt public tables`,
     'must be followed by full doctor plus direct/OpenClaw/remote/local canaries',
   ],
   pre_execute_readonly_checks: [
     'confirm target service id is openclaw-railway-template / 6f333a2b-07d9-4219-8531-3b96fbc6a2f9',
     'audit public tables where relrowsecurity=false and no GBRAIN:RLS_EXEMPT comment exists',
     'if that audit returns any rows, stop and add explicit GBRAIN:RLS_EXEMPT comments or accept the RLS backfill before executing',
-    'decide whether upstream PR #619/#620/#626 must be merged/consumed first; upgrading to pure upstream 0.26.8 drops the live #626 cherry-pick',
+    `decide whether upstream PR #619/#620/#626 must be merged/consumed first; upgrading to pure upstream ${targetPackageVersion || targetSha.slice(0, 7)} drops any live runtime cherry-picks that are not on upstream master`,
     'if target_sha is not upstream master, require GBRAIN_RUNTIME_CUSTOM_CUT_APPROVED=openclaw-gbrain-custom-runtime-cut and explicit GBRAIN_RUNTIME_UPGRADE_FETCH_URL/REF for the custom fork branch',
   ],
   rollback: [
@@ -129,6 +131,17 @@ print({
 function readUpstreamSha() {
   const out = run('git', ['ls-remote', 'https://github.com/garrytan/gbrain.git', 'refs/heads/master']);
   return out?.split(/\s+/)[0] || null;
+}
+
+async function readGitHubPackageVersion(sha) {
+  try {
+    const res = await fetch(`https://raw.githubusercontent.com/garrytan/gbrain/${sha}/package.json`);
+    if (!res.ok) return null;
+    const pkg = await res.json();
+    return pkg.version || null;
+  } catch {
+    return null;
+  }
 }
 
 function readRuntime() {
@@ -209,7 +222,7 @@ function buildRunWith() {
   if (isCustomRuntimeCut) {
     parts.push(`GBRAIN_RUNTIME_CUSTOM_CUT_APPROVED=${CUSTOM_CUT_APPROVAL_PHRASE}`);
     parts.push('GBRAIN_RUNTIME_UPGRADE_FETCH_URL=https://github.com/ArshyaAI/gbrain.git');
-    parts.push('GBRAIN_RUNTIME_UPGRADE_REF=astack/full-pass-candidate-0.26.8');
+    parts.push('GBRAIN_RUNTIME_UPGRADE_REF=<custom-branch-or-ref-containing-target-sha>');
     parts.push(`GBRAIN_RUNTIME_UPGRADE_SHA=${targetSha}`);
   }
   parts.push('npm run upgrade:gbrain-runtime -- --execute --json');
