@@ -46,6 +46,13 @@ Decision at `2026-05-05T01:05:11Z`: use the upstream-clean wait path, not the cu
 - Scheduler burn-in restarted after deploying the astack shell-job quota guard. The previous burn-in window was invalidated by job `1894` at `2026-05-05T01:17:05Z`; the new cutoff is `2026-05-05T05:55:53Z`.
 - Latest quick gate after this decision remains `BLOCKED`: PRs #619/#620/#626 are open/mergeable, upstream repo permission is `READ`, runtime `0.26.7` versus upstream `0.27.0`, doctor `resolver_health` warnings, scheduler burn-in has not reached 24h, no current token/session/rate-limit logs, secret scan pass.
 
+Merge-gap assessment at `2026-05-05T06:14Z`:
+
+- Daily dogfooding gap is small: OpenClaw + GBrain + Remote MCP + Claude/Codex canaries work, and the shell-job quota guard is live.
+- Safety/correctness gap is medium: fixes are validated in astack/runtime, but #620 is still astack-applied and #626 is still a runtime cherry-pick.
+- Upgrade/certification gap is large: a clean upstream `0.27.0` upgrade would drop required unmerged behavior, and FULL PASS remains blocked until PR #619/#620/#626 are consumed plus burn-in completes.
+- Practical status remains `PASS_WITH_CONCERNS`: use for dogfooding, but do not claim foundation-ready FULL PASS or run the upstream-clean upgrade yet.
+
 ## Completion Audit Snapshot
 
 Checked at `2026-05-05T00:56:53Z`. Result: `NOT_FULL_PASS`.
