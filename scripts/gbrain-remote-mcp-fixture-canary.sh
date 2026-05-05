@@ -1,14 +1,29 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-project_id="${GBRAIN_REMOTE_RAILWAY_PROJECT_ID:-fbdb217b-060f-4f1e-8697-08a6288a19c4}"
-environment="${GBRAIN_REMOTE_RAILWAY_ENVIRONMENT:-production}"
-service_id="${GBRAIN_REMOTE_RAILWAY_SERVICE_ID:-beab847a-12bb-499e-a44c-bf5d1982924f}"
+allowed_project_id="fbdb217b-060f-4f1e-8697-08a6288a19c4"
+allowed_environment="production"
+allowed_service_id="beab847a-12bb-499e-a44c-bf5d1982924f"
+allowed_service_name="gbrain-remote-mcp"
+project_id="${GBRAIN_REMOTE_RAILWAY_PROJECT_ID:-$allowed_project_id}"
+environment="${GBRAIN_REMOTE_RAILWAY_ENVIRONMENT:-$allowed_environment}"
+service_id="${GBRAIN_REMOTE_RAILWAY_SERVICE_ID:-$allowed_service_id}"
 forbidden_service_id="63b84308-25d7-4b03-9c23-4d0d7239728f"
-base_url="${GBRAIN_REMOTE_MCP_URL:-https://gbrain-remote-mcp-production.up.railway.app}"
+allowed_base_url="https://gbrain-remote-mcp-production.up.railway.app"
+base_url="${GBRAIN_REMOTE_MCP_URL:-$allowed_base_url}"
 
 if [[ "$service_id" == "$forbidden_service_id" ]]; then
   echo '{"status":"FAIL","error":"refusing forbidden service id"}' >&2
+  exit 2
+fi
+
+if [[ "$project_id" != "$allowed_project_id" || "$environment" != "$allowed_environment" || "$service_id" != "$allowed_service_id" ]]; then
+  echo '{"status":"FAIL","error":"refusing unapproved Remote MCP Railway target"}' >&2
+  exit 2
+fi
+
+if [[ "$base_url" != "$allowed_base_url" && "${GBRAIN_REMOTE_ALLOW_CUSTOM_URL:-}" != "1" ]]; then
+  echo '{"status":"FAIL","error":"refusing unapproved Remote MCP URL"}' >&2
   exit 2
 fi
 
@@ -22,6 +37,25 @@ require_command() {
 require_command railway
 require_command node
 require_command npm
+
+verify_target() {
+  node -e "const expectedId = process.argv[1]; const expectedName = process.argv[2]; let raw = ''; process.stdin.on('data', chunk => { raw += chunk; }); process.stdin.on('end', () => { const service = JSON.parse(raw); if (service.id !== expectedId || service.name !== expectedName) { console.error(JSON.stringify({ status: 'FAIL', error: 'wrong Remote MCP Railway service', expected_service_id: expectedId, got_service_id: service.id, got_service_name: service.name })); process.exit(2); } });" "$allowed_service_id" "$allowed_service_name"
+}
+
+tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/gbrain-remote-mcp-target.XXXXXX")"
+(
+  cd "$tmpdir"
+  railway link \
+    --project "$project_id" \
+    --environment "$environment" \
+    --service "$service_id" \
+    --json >/dev/null
+  railway service status \
+    --service "$service_id" \
+    --environment "$environment" \
+    --json | verify_target
+)
+rm -rf "$tmpdir"
 
 create_client() {
   local name="$1"
@@ -114,4 +148,8 @@ GBRAIN_REMOTE_MCP_URL="$base_url" \
   GBRAIN_REMOTE_LOG_SAMPLE_FILE="$log_file" \
   npm run canary:gbrain-remote
 
-echo '{"oauth_fixture_clients_revoked":true}'
+printf '{"oauth_fixture_clients_revoked":true,"remote_mcp_target_verified":true,"project_id":"%s","environment":"%s","service_id":"%s","service_name":"%s"}\n' \
+  "$project_id" \
+  "$environment" \
+  "$service_id" \
+  "$allowed_service_name"

@@ -6,31 +6,44 @@ const json = args.has('--json');
 const skipClaude = args.has('--skip-claude');
 const skipCodex = args.has('--skip-codex');
 const skipRemote = args.has('--skip-remote');
+const skipDirect = args.has('--skip-direct');
 const deadJobCutoff = new Date(process.env.GBRAIN_FULL_PASS_DEAD_JOB_CUTOFF || '2026-05-04T20:04:26Z');
 const burnInHoursRequired = Number(process.env.GBRAIN_FULL_PASS_BURN_IN_HOURS || '24');
 const codexCanaryTimeoutMs = Number(process.env.GBRAIN_CODEX_CANARY_TIMEOUT_MS || '900000');
 const targetProjectId = 'fbdb217b-060f-4f1e-8697-08a6288a19c4';
 const targetEnvironment = 'production';
+const targetEnvironmentId = '614198f2-f7ed-4756-ae83-e0dd23943c9d';
 const targetServiceId = '6f333a2b-07d9-4219-8531-3b96fbc6a2f9';
+const targetServiceName = 'openclaw-railway-template';
+const remoteMcpServiceId = 'beab847a-12bb-499e-a44c-bf5d1982924f';
+const remoteMcpServiceName = 'gbrain-remote-mcp';
 const forbiddenServiceId = '63b84308-25d7-4b03-9c23-4d0d7239728f';
 
 const gates = [];
 
-await gate('upstream_pr_619_resolver', checkPullRequest(619, { requireMerged: false }));
-await gate('upstream_pr_620_http_auth', checkPullRequest(620, { requireMerged: false }));
+assertAllowedService(targetServiceId, targetServiceName);
+assertAllowedService(remoteMcpServiceId, remoteMcpServiceName);
+
+await gate('upstream_pr_619_resolver', checkPullRequest(619));
+await gate('upstream_pr_620_http_auth', checkPullRequest(620));
+await gate('upstream_pr_626_stale_embed_source_scope', checkPullRequest(626));
 await gate('update_flow_currentness', checkUpdateFlow());
 if (!skipRemote) {
   await gate('remote_mcp_oauth_fixture_canary', checkRemoteMcpCanary());
 }
-await gate('runtime_gbrain_doctor', checkRuntimeDoctor());
-await gate('openclaw_runtime_risk_logs', checkRuntimeRiskLogs());
-await gate('scheduler_dead_jobs_burn_in', checkSchedulerBurnIn());
 if (!skipClaude) {
   await gate('claude_code_shared_gbrain_canary', checkClaudeCanary());
 }
 if (!skipCodex) {
   await gate('codex_shared_gbrain_canary', checkCodexCanary());
 }
+if (!skipDirect) {
+  await gate('direct_gbrain_live_canary', checkDirectGbrainCanary());
+}
+await gate('runtime_gbrain_doctor', checkRuntimeDoctor());
+await gate('openclaw_runtime_risk_logs', checkRuntimeRiskLogs());
+await gate('scheduler_dead_jobs_burn_in', checkSchedulerBurnIn());
+await gate('secret_scan_full_diff_and_artifacts', checkSecretScan());
 
 const blockers = gates.filter(g => g.status === 'BLOCKED' || g.status === 'FAIL');
 const warnings = gates.filter(g => g.status === 'WARN');
@@ -43,11 +56,15 @@ const result = {
   full_pass_requires: [
     'Claude Code canary PASS',
     'Codex canary PASS',
+    'Direct GBrain live canary PASS',
     'Remote MCP/OAuth fixture canary PASS',
     'scheduler burn-in window complete with no new dead shell jobs',
     'GBrain runtime doctor --json status ok',
     'upstream PR #619 consumed so resolver doctor warnings are not shipped',
     'upstream PR #620 consumed so remote MCP auth is not astack-custom',
+    'upstream PR #626 consumed so source-scoped stale embedding is not a runtime cherry-pick',
+    'every Railway-backed gate asserts the approved project/environment/service target',
+    'full diff and durable readiness artifacts pass secret-pattern scan',
     'approval-gated runtime upgrade to latest safe upstream completed and canaried',
   ],
 };
@@ -72,19 +89,17 @@ async function gate(name, checkPromise) {
   }
 }
 
-async function checkPullRequest(number, { requireMerged }) {
+async function checkPullRequest(number) {
   const out = run('gh', ['pr', 'view', String(number), '--repo', 'garrytan/gbrain', '--json', 'number,title,state,mergeable,mergedAt,url']);
   const pr = parseJson(out.stdout);
-  if (requireMerged && pr.state !== 'MERGED') {
-    return { status: 'BLOCKED', reason: `PR #${number} is ${pr.state}, not MERGED`, evidence: pr };
-  }
   if (pr.state === 'MERGED') {
     return { status: 'PASS', reason: `PR #${number} merged`, evidence: pr };
   }
-  if (pr.state === 'OPEN' && pr.mergeable === 'MERGEABLE') {
-    return { status: 'BLOCKED', reason: `PR #${number} open/mergeable; must land or be consumed for FULL PASS`, evidence: pr };
-  }
-  return { status: 'WARN', reason: `PR #${number} state=${pr.state} mergeable=${pr.mergeable}`, evidence: pr };
+  return {
+    status: 'BLOCKED',
+    reason: `PR #${number} state=${pr.state} mergeable=${pr.mergeable}; must be merged and consumed before FULL PASS`,
+    evidence: pr,
+  };
 }
 
 async function checkUpdateFlow() {
@@ -106,6 +121,8 @@ async function checkRuntimeRiskLogs() {
     env: { ...process.env, GBRAIN_VERIFY_SINCE: process.env.GBRAIN_VERIFY_SINCE || '30m' },
     timeout: 180_000,
   });
+  const targetMismatch = assertVerifierOutputTarget(out.stdout, { requireVerifiedLine: true });
+  if (targetMismatch) return targetMismatch;
   const counts = Object.fromEntries([...out.stdout.matchAll(/current_([a-z_]+)_lines=(\d+)/g)].map(m => [m[1], Number(m[2])]));
   const risk = (counts.token_mismatch || 0) + (counts.sessions_store || 0) + (counts.rate_limit || 0);
   if (risk === 0) {
@@ -119,6 +136,13 @@ async function checkRemoteMcpCanary() {
   const objects = parseJsonObjects(stripNpmPrefix(out.stdout));
   const payload = objects.find((item) => item && item.status) || {};
   const cleanup = objects.find((item) => item && item.oauth_fixture_clients_revoked === true) || {};
+  if (cleanup.remote_mcp_target_verified !== true || cleanup.service_id !== remoteMcpServiceId) {
+    return {
+      status: 'BLOCKED',
+      reason: 'Remote MCP fixture did not prove the approved Railway service target',
+      evidence: { cleanup, expected_service_id: remoteMcpServiceId },
+    };
+  }
   if (payload.status === 'PASS' && cleanup.oauth_fixture_clients_revoked === true) {
     const skipped = (payload.evidence || []).filter((step) => step.status === 'SKIP');
     if (skipped.length) {
@@ -141,10 +165,44 @@ async function checkRemoteMcpCanary() {
   };
 }
 
-async function checkRuntimeDoctor() {
-  if (targetServiceId === forbiddenServiceId) {
-    return { status: 'BLOCKED', reason: 'refusing forbidden Railway service id' };
+async function checkDirectGbrainCanary() {
+  const out = run('npm', ['run', 'canary:gbrain'], { allowFailure: true, timeout: 900_000 });
+  const payload = parseJson(stripNpmPrefix(out.stdout));
+  if (payload.status === 'PASS') {
+    return {
+      status: 'PASS',
+      reason: 'direct runtime GBrain live canary passed',
+      evidence: summarizeDirectGbrainCanary(payload),
+    };
   }
+  return {
+    status: 'FAIL',
+    reason: `direct GBrain canary status=${payload.status || 'unknown'}`,
+    evidence: summarizeDirectGbrainCanary(payload),
+  };
+}
+
+function summarizeDirectGbrainCanary(payload) {
+  const evidence = payload.evidence || [];
+  const failed = evidence.filter((step) => step.pass === false).map((step) => ({
+    name: step.name,
+    detail: step.detail,
+  }));
+  const health = evidence.find((step) => step.name === 'health after embed')?.detail?.sample || null;
+  const stats = evidence.find((step) => step.name === 'stats')?.detail?.sample || null;
+  return {
+    status: payload.status,
+    target: payload.target,
+    canary_slugs: payload.canary_slugs,
+    step_count: evidence.length,
+    failed,
+    health,
+    stats,
+  };
+}
+
+async function checkRuntimeDoctor() {
+  assertAllowedService(targetServiceId, targetServiceName);
   const remote = [
     'env HOME=/data GBRAIN_HOME=/data BRAIN_REPO=/data/brain BUN_INSTALL=/data/.bun PATH=/data/.bun/bin:/app/node_modules/.bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
     'bash -lc',
@@ -174,6 +232,8 @@ async function checkRuntimeDoctor() {
 
 async function checkSchedulerBurnIn() {
   const out = run('npm', ['run', 'verify:gbrain', '--', '--dead-jobs-readonly'], { timeout: 180_000 });
+  const targetMismatch = assertVerifierOutputTarget(out.stdout, { requireVerifiedLine: true });
+  if (targetMismatch) return targetMismatch;
   const startedAt = [...out.stdout.matchAll(/Started:\s+([0-9T:.-]+Z)/g)].map(m => new Date(m[1])).filter(d => Number.isFinite(d.getTime()));
   const newerDeadJobs = startedAt.filter(d => d > deadJobCutoff).map(d => d.toISOString());
   const burnInHours = (Date.now() - deadJobCutoff.getTime()) / 3_600_000;
@@ -232,7 +292,101 @@ function summarizeRemoteMcp(payload, cleanup, skipped = []) {
     auth_http_status: authStatuses,
     skipped: skipped.map((step) => ({ step: step.step, reason: step.reason })),
     oauth_fixture_clients_revoked: cleanup.oauth_fixture_clients_revoked === true,
+    railway_target: {
+      project_id: cleanup.project_id,
+      environment: cleanup.environment,
+      service_id: cleanup.service_id,
+      service_name: cleanup.service_name,
+      verified: cleanup.remote_mcp_target_verified === true,
+    },
   };
+}
+
+async function checkSecretScan() {
+  const files = [
+    'docs/gbrain-full-pass-readiness-sprint-2026-05-04.md',
+    'package.json',
+    'scripts/verify-gbrain-full-pass-gates.mjs',
+    'scripts/gbrain-live-canary.mjs',
+    'scripts/gbrain-claude-code-canary.sh',
+    'scripts/gbrain-codex-canary.sh',
+    'scripts/gbrain-remote-mcp-canary.mjs',
+    'scripts/gbrain-remote-mcp-fixture-canary.sh',
+    'services/gbrain-remote-mcp/start-gbrain-http.mjs',
+  ];
+  const patterns = [
+    { name: 'gbrain_token', regex: /gbrain_(?:cs|at|rt|code|cl)_[A-Za-z0-9_-]{16,}/g },
+    { name: 'postgres_url', regex: /postgres(?:ql)?:\/\/[^\s'"`]+/gi },
+    { name: 'openai_key', regex: /sk-[A-Za-z0-9_-]{20,}/g },
+    { name: 'bearer_token', regex: /Bearer\s+[A-Za-z0-9._-]{20,}/gi },
+    { name: 'github_token', regex: /gh[pousr]_[A-Za-z0-9_]{20,}/g },
+    { name: 'client_secret_literal', regex: /\bclient[_-]?secret\b\s*[:=]\s*["']?[A-Za-z0-9_-]{16,}/gi },
+  ];
+  const hits = [];
+  for (const file of files) {
+    const out = run('git', ['show', `HEAD:${file}`], { allowFailure: true });
+    const worktree = run('bash', ['-lc', `test -f ${quote(file)} && sed -n '1,20000p' ${quote(file)} || true`], { allowFailure: true });
+    const text = worktree.stdout || out.stdout || '';
+    scanText(text, file, patterns, hits);
+  }
+  const diff = run('git', ['diff', '--no-ext-diff', 'HEAD', '--'], { allowFailure: true, timeout: 180_000 });
+  scanText(diff.stdout || '', 'git diff HEAD', patterns, hits);
+  if (hits.length) {
+    return {
+      status: 'FAIL',
+      reason: 'secret-pattern scan found possible committed/durable secret material',
+      evidence: { hits },
+    };
+  }
+  return {
+    status: 'PASS',
+    reason: 'full diff and durable GBrain readiness artifacts contain no secret-pattern matches',
+    evidence: { files_scanned: files.length, patterns: patterns.map((p) => p.name), diff_bytes_scanned: Buffer.byteLength(diff.stdout || '') },
+  };
+}
+
+function scanText(text, source, patterns, hits) {
+  for (const pattern of patterns) {
+    pattern.regex.lastIndex = 0;
+    let match;
+    while ((match = pattern.regex.exec(text)) !== null) {
+      if (isAllowedSecretCanaryLiteral(match[0])) continue;
+      hits.push({ source, pattern: pattern.name, offset: match.index });
+      if (hits.length >= 20) return;
+    }
+  }
+}
+
+function isAllowedSecretCanaryLiteral(value) {
+  return /gbrain_bad_token_for_canary|Bearer REDACTED|POSTGRES_URL_REDACTED|sk-REDACTED|gh_REDACTED/i.test(value);
+}
+
+function assertAllowedService(serviceId, serviceName) {
+  if (!serviceId || serviceId === forbiddenServiceId) {
+    throw new Error(`refusing forbidden or empty Railway service id for ${serviceName || 'unknown service'}`);
+  }
+  const allowed = new Map([
+    [targetServiceId, targetServiceName],
+    [remoteMcpServiceId, remoteMcpServiceName],
+  ]);
+  if (allowed.get(serviceId) !== serviceName) {
+    throw new Error(`refusing unapproved Railway service target: ${serviceName} (${serviceId})`);
+  }
+}
+
+function assertVerifierOutputTarget(stdout, { requireVerifiedLine }) {
+  const hasProject = stdout.includes(`project=${targetProjectId}`);
+  const hasEnvironment = stdout.includes(`environment=${targetEnvironment} (${targetEnvironmentId})`);
+  const hasService = stdout.includes(`service=${targetServiceName} (${targetServiceId})`);
+  const hasVerified = stdout.includes(`verified_target=${targetServiceName} (${targetServiceId})`);
+  if (!hasProject || !hasEnvironment || !hasService || (requireVerifiedLine && !hasVerified)) {
+    return {
+      status: 'BLOCKED',
+      reason: 'Railway verifier output did not prove the approved target service',
+      evidence: { hasProject, hasEnvironment, hasService, hasVerified, expected_service_id: targetServiceId },
+    };
+  }
+  return null;
 }
 
 function run(cmd, cmdArgs, opts = {}) {

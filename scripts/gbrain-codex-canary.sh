@@ -53,6 +53,7 @@ run_phase1() {
   codex exec \
     --ignore-user-config \
     --skip-git-repo-check \
+    --dangerously-bypass-approvals-and-sandbox \
     --output-last-message "$tmp1" \
     --json \
     -c 'model="gpt-5.5"' \
@@ -67,10 +68,14 @@ run_phase1() {
 
 run_phase2() {
   codex exec \
+    --ignore-user-config \
     --skip-git-repo-check \
     --dangerously-bypass-approvals-and-sandbox \
     --output-last-message "$tmp2" \
     --json \
+    -c 'model="gpt-5.5"' \
+    -c 'mcp_servers.gbrain.command="/Users/arshya/.bun/bin/gbrain"' \
+    -c 'mcp_servers.gbrain.args=["serve"]' \
     -c 'mcp_servers.gbrain.tools.delete_page.approval_mode="approve"' \
     -c 'mcp_servers.gbrain.tools.restore_page.approval_mode="approve"' \
     -c 'mcp_servers.gbrain.tools.get_page.approval_mode="approve"' \
@@ -82,14 +87,16 @@ phase2_exit=0
 run_phase1 || phase1_exit=$?
 run_phase2 || phase2_exit=$?
 
-node - "$tmp1" "$tmp2" "$slug" "$phase1_exit" "$phase2_exit" <<'NODE'
+node - "$tmp1" "$tmp2" "$slug" "$sentinel" "$phase1_exit" "$phase2_exit" <<'NODE'
 const fs = require('node:fs');
-const [phase1File, phase2File, slug, phase1ExitRaw, phase2ExitRaw] = process.argv.slice(2);
+const { execFileSync } = require('node:child_process');
+const [phase1File, phase2File, slug, sentinel, phase1ExitRaw, phase2ExitRaw] = process.argv.slice(2);
 const phase1Exit = Number(phase1ExitRaw);
 const phase2Exit = Number(phase2ExitRaw);
 
 const phase1 = readPayload(phase1File);
 const phase2 = readPayload(phase2File);
+const finalStateVerified = verifyPageContainsSentinel(slug, sentinel);
 const pass = phase1Exit === 0
   && phase2Exit === 0
   && phase1.status === 'PASS'
@@ -97,7 +104,8 @@ const pass = phase1Exit === 0
   && phase1.health_seen === true
   && phase1.search_seen === true
   && phase2.delete_restore_seen === true
-  && phase2.sentinel_seen_after_restore === true;
+  && phase2.sentinel_seen_after_restore === true
+  && finalStateVerified === true;
 
 console.log(JSON.stringify({
   status: pass ? 'PASS' : 'FAIL',
@@ -106,6 +114,7 @@ console.log(JSON.stringify({
   search_seen: phase1.search_seen === true,
   sentinel_seen: phase1.sentinel_seen === true || phase2.sentinel_seen_after_restore === true,
   delete_restore_seen: phase2.delete_restore_seen === true,
+  final_state_verified_by_gbrain_get_page: finalStateVerified,
   phase1_exit: phase1Exit,
   phase2_exit: phase2Exit,
   evidence_summary: [
@@ -127,6 +136,24 @@ function readPayload(file) {
     return JSON.parse(text.slice(start, end + 1));
   } catch (err) {
     return { status: 'FAIL', evidence_summary: `missing/unparseable output: ${err.message}` };
+  }
+}
+
+function verifyPageContainsSentinel(pageSlug, expectedSentinel) {
+  try {
+    const cli = process.env.GBRAIN_CLI || '/Users/arshya/.bun/bin/gbrain';
+    const raw = execFileSync(cli, ['call', 'get_page', JSON.stringify({ slug: pageSlug })], {
+      encoding: 'utf8',
+      timeout: 120000,
+      maxBuffer: 8 * 1024 * 1024,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    const text = String(raw || '');
+    const start = text.indexOf('{');
+    const page = JSON.parse(text.slice(start));
+    return JSON.stringify(page).includes(expectedSentinel);
+  } catch {
+    return false;
   }
 }
 NODE

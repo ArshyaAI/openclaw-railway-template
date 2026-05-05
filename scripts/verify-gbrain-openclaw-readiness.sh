@@ -378,6 +378,7 @@ run_runtime_readonly() {
 
 run_dead_jobs_readonly() {
   require_command railway
+  require_command node
 
   if [[ "$TARGET_SERVICE_ID" == "$FORBIDDEN_SERVICE_ID" ]]; then
     echo "REFUSING forbidden service id: $FORBIDDEN_SERVICE_ID" >&2
@@ -388,6 +389,22 @@ run_dead_jobs_readonly() {
   echo "project=$TARGET_PROJECT_ID"
   echo "environment=$TARGET_ENVIRONMENT ($TARGET_ENVIRONMENT_ID)"
   echo "service=$TARGET_SERVICE_NAME ($TARGET_SERVICE_ID)"
+
+  tmpdir="$(make_tmpdir)"
+  trap 'rm -rf "$tmpdir"' EXIT
+  (
+    cd "$tmpdir"
+    railway link \
+      --project "$TARGET_PROJECT_ID" \
+      --environment "$TARGET_ENVIRONMENT" \
+      --service "$TARGET_SERVICE_ID" \
+      --json >/dev/null
+    service_status_json="$(railway service status \
+      --service "$TARGET_SERVICE_ID" \
+      --environment "$TARGET_ENVIRONMENT" \
+      --json)"
+    printf '%s\n' "$service_status_json" | assert_target_service_status
+  )
 
   railway ssh \
     --project "$TARGET_PROJECT_ID" \

@@ -186,6 +186,17 @@ if (job && typeof job.id === "number") {
   expect("main chunks embedded after job", call("get_chunks", { slug: mainSlug }), (r) => Array.isArray(r) && r.some((x) => x.embedded_at || x.embedding));
   expect("linked chunks embedded after job", call("get_chunks", { slug: linkedSlug }), (r) => Array.isArray(r) && r.some((x) => x.embedded_at || x.embedding));
 }
+const staleJob = call("submit_job", { name: "embed", data: { stale: true }, max_attempts: 1, timeout_ms: 240000 });
+expect("submit global stale embed job", staleJob, (r) => r && typeof r.id === "number");
+if (staleJob && typeof staleJob.id === "number") {
+  let observed = null;
+  for (let i = 0; i < 300; i += 1) {
+    observed = call("get_job", { id: staleJob.id });
+    if (observed && ["completed", "failed", "dead", "cancelled"].includes(observed.status)) break;
+    sleep(1000);
+  }
+  expect("get global stale embed job", observed, (r) => r && r.id === staleJob.id && r.status === "completed");
+}
 expect("stats", call("get_stats"), (r) => r && typeof r === "object");
 expect("health after embed", call("get_health"), (r) => r && typeof r === "object" && Number(r.missing_embeddings || 0) === 0);
 
