@@ -4,7 +4,7 @@ Status: `DOGFOOD_READY_CUSTOM_CUT` (`FULL_PASS_BLOCKED_UPSTREAM_CLEAN`)
 
 This is the astack-owned follow-up sprint for the remaining GBrain full-pass blockers. It continues from `docs/gbrain-resume-readiness-2026-05-04.md` and does not reset the earlier evidence.
 
-Current snapshot at `2026-05-05T07:15Z`:
+Current snapshot at `2026-05-05T17:45Z`:
 
 - User explicitly approved breaking the upstream-clean gates to get the full feature set dogfoodable ASAP.
 - OpenClaw target runtime GBrain is now `gbrain 0.27.0` at custom cut `de11d4c858b1a880931c008fbee3ceef92a8329a`.
@@ -12,8 +12,9 @@ Current snapshot at `2026-05-05T07:15Z`:
 - Runtime full doctor is healthy: `status=healthy`, `health_score=100`, schema version `36`, auto-RLS event trigger installed, embeddings `100%`, resolver `39 skills, all reachable`.
 - Remote MCP service `gbrain-remote-mcp` is also on `gbrain 0.27.0` at the same custom cut, deployment `b57e27c0-351e-4db1-9c0e-914922c1769d`, safety patch verified.
 - Local agent binary `/Users/arshya/.bun/bin/gbrain` is now `gbrain 0.27.0`; dirty local source checkout `/Users/arshya/gbrain` remains preserved.
-- OpenClaw target agent model is now `anthropic/claude-sonnet-4-5` with fallback `google/gemini-2.5-pro`, because live probes showed `openai-codex/gpt-5.5` auth-invalid and `openai/gpt-5.4` quota-exceeded.
-- Direct GBrain, Remote MCP/OAuth, Codex, and Claude Code canaries all pass against the shared live brain.
+- OpenClaw target agent text/reasoning now prefers Codex OAuth again: default `openai-codex/gpt-5.5`, `GPT` alias `openai-codex/gpt-5.4`, scheduled agent wrapper default `openai-codex/gpt-5.4`, fallback `google/gemini-2.5-pro`. API keys remain available only for paths that currently require them, such as Twilio/OpenAI Realtime, embeddings, Gemini, or Anthropic.
+- Direct GBrain, Remote MCP/OAuth, Codex, Claude Code, and Twilio/Gather voice-capture canaries all pass against the shared live brain.
+- Latest OpenClaw target deployment: `4a71ea3c-a8a4-4757-801a-b16ab5d87121` (`restore voice watchdog on boot`), status `SUCCESS`.
 - Strict FULL PASS remains blocked only by upstream-clean governance/currentness and scheduler burn-in, not by live feature usability.
 
 ## Scope
@@ -31,8 +32,8 @@ Allowed Railway operations in this sprint are limited to the OpenClaw target ser
 
 | Bucket | Finding |
 | --- | --- |
-| Already working | OpenClaw target service healthy, runtime GBrain `0.26.7`, stdio MCP configured, supervisor running on the post-upgrade boot path, direct/remote/Codex GBrain canaries passed. `embed --stale --dry-run` now reports 0 stale chunks after the source-scoped embedding fix. |
-| Working but not FULL PASS | Runtime doctor remains `warnings`; scheduled shell-job health needs the fresh post-quota-guard 24-48h observation window; remote MCP is live-hardened but still carries an astack patch until upstream PR #620 lands; runtime GBrain carries the source-scoped stale-embed patch until upstream PR #626 is merged/consumed. |
+| Already working | OpenClaw target service healthy, runtime GBrain `0.27.0` custom cut, stdio MCP configured, supervisor running on the post-upgrade boot path, direct/remote/Codex/Claude/Voice GBrain canaries passed. Runtime doctor is healthy and embedding coverage is 100%. |
+| Working but not FULL PASS | Scheduled shell-job health still needs the fresh post-quota-guard 24-48h observation window; remote MCP is live-hardened but still carries an astack patch until upstream PR #620 lands; runtime GBrain carries custom-cut PR behavior until PR #619/#620/#626 are merged/consumed. |
 | Missing evidence | No local-agent evidence gap remains: Claude Code and Codex both completed real shared-GBrain toolcall canaries. |
 | Real blockers | Running direct-minions scheduler ignored `enabled:false`; this produced fresh dead shell jobs from disabled OpenClaw-agent wrapper jobs. A second blocker was found and fixed: upstream `embed --stale` grouped by slug even though slugs are unique only per `source_id`, leaving stale chunks unembedded on duplicate-slug sources. A third blocker was found and deployed on 2026-05-05: enabled `x-bookmarks-daily` can die from X/Twitter `CreditsDepleted`; the live shell-job quota guard now converts that known external quota condition into a recorded skip instead of a GBrain `DEAD` job. |
 | Security risks | Remote MCP must return clean auth status, keep DCR disabled, keep CORS default-deny, and avoid auth material in logs. |
@@ -42,12 +43,14 @@ Allowed Railway operations in this sprint are limited to the OpenClaw target ser
 
 | Workstream | Status | Evidence |
 | --- | --- | --- |
-| 1. Remote MCP hardening | live pass, upstream patch pending | Remote deployment `aa3baa40-a303-4bc0-890f-99a8120cbf69` runs GBrain `0.26.7` with the astack wrapper plus the upstream-aligned `InvalidTokenError` provider patch from PR #620. Full remote canary now passes and is part of `verify:gbrain-full-pass-gates`: missing token `401`, bad token `401`, expired token `401`, revoked client denial `400`, DCR disabled `404`, admin denial `404`, CORS default-deny, log redaction, read-only write denial, tools list, read/write/search/version/delete/restore, and OAuth fixture client revocation. Upstream issue: <https://github.com/garrytan/gbrain/issues/616>. Upstream fix PR: <https://github.com/garrytan/gbrain/pull/620>. |
-| 2. Scheduler/quota fix | live pass, 24-48h monitoring pending | Deployment `9a87eb62-612d-4bdf-9ed7-b99c495edfdc` adds the external-quota shell-job guard on top of the corrected astack-owned scheduler/wrapper and hardened GBrain supervisor boot. Runtime validate: `enabled_cron=12`, `disabled_cron=7`, enabled OpenClaw-agent wrappers `0`. A read-only check had found job `1894` from enabled `x-bookmarks-daily`, caused by X/Twitter `CreditsDepleted`, not OpenClaw model cooldown. Commit `258eb89` added `astack-shell-job-runner.sh` and `gbrain-submit-shell-job.sh`; live canary job `1941` proved a fake `CreditsDepleted` shell job completed with `skipped_external_quota` instead of becoming `DEAD`. Latest gate after deploy is `BLOCKED`, not `FAIL`: `0.22h/24h`, no new dead jobs after cutoff. `openclaw-agent-job.sh` still defaults to `openai/gpt-5.4` if intentionally enabled and preserves failure exit codes across no-fallback, fallback-success, and fallback-fail paths. |
+| 1. Remote MCP hardening | live pass, upstream patch pending | Remote MCP is on the custom `0.27.0` cut with the upstream-aligned `InvalidTokenError` provider patch from PR #620. Full remote canary now passes and is part of `verify:gbrain-full-pass-gates`: missing token `401`, bad token `401`, expired token `401`, revoked client denial `400`, DCR disabled `404`, admin denial `404`, CORS default-deny, log redaction, read-only write denial, tools list, read/write/search/version/delete/restore, and OAuth fixture client revocation. Upstream issue: <https://github.com/garrytan/gbrain/issues/616>. Upstream fix PR: <https://github.com/garrytan/gbrain/pull/620>. |
+| 2. Scheduler/quota fix | live pass, 24-48h monitoring pending | Deployment `9a87eb62-612d-4bdf-9ed7-b99c495edfdc` added the external-quota shell-job guard on top of the corrected astack-owned scheduler/wrapper and hardened GBrain supervisor boot. Runtime validate: `enabled_cron=12`, `disabled_cron=7`, enabled OpenClaw-agent wrappers `0`. A read-only check had found job `1894` from enabled `x-bookmarks-daily`, caused by X/Twitter `CreditsDepleted`, not OpenClaw model cooldown. Commit `258eb89` added `astack-shell-job-runner.sh` and `gbrain-submit-shell-job.sh`; live canary job `1941` proved a fake `CreditsDepleted` shell job completed with `skipped_external_quota` instead of becoming `DEAD`. The 2026-05-05 OAuth/API split follow-up changed `openclaw-agent-job.sh` to default to `openai-codex/gpt-5.4`. Latest full gate is `BLOCKED`, not `FAIL`: `11.7h/24h`, no new dead jobs after cutoff. |
 | 3. Claude Code canary | pass | After the 2am Europe/Zurich quota reset, `npm run canary:gbrain-claude` passed with real GBrain MCP operations: get_page, put_page, search, delete_page, include_deleted get_page, restore_page, and final get_page. Latest full gate evidence slug: `system/canaries/gbrain-claude-code-canary-2026-05-05`. |
-| 4. Doctor warnings/upstream route | frontmatter fixed, resolver upstream PR open, stale-embed patch live | Runtime frontmatter audit is now clean: `ok=true,total=0` after the targeted runtime source fix. Runtime `embed --stale` is also clean after cherry-picking PR #626 into `/data/gbrain`: dry-run now reports `Would embed 0 chunks`. Runtime doctor still warns on 37 shipped skill routing misses on GBrain `0.26.7`. Upstream resolver issue: <https://github.com/garrytan/gbrain/issues/617>. Resolver fix PR: <https://github.com/garrytan/gbrain/pull/619>. Stale-embed fix PR: <https://github.com/garrytan/gbrain/pull/626>. |
-| 5. Update flow automation | currentness blocked by new upstream | `npm run check:gbrain-upstream -- --json` now sees upstream `ee9ceb327a39b0c705ee945c6cfe821de11d34ed` / `0.27.0`. Runtime remains `d050451df5852cc7414601e92b927469e374f75e` / `0.26.7` with PR #626 cherry-picked; Docker/verifier pins remain `058fe695...`. The guarded upgrade plan reports runtime version, target package version, current upstream migrations, and migration v35 RLS impact. A prior read-only v35 audit on the target DB found `non_exempt_public_tables_without_rls=0`, so the RLS backfill would not currently flip any existing non-exempt public table. Runtime was not upgraded in this pass because pure upstream `0.27.0` would drop the live #626 patch unless upstream consumes the PRs or a custom combined runtime cut is explicitly accepted. The custom combined cut path remains explicitly double-gated and requires `GBRAIN_RUNTIME_CUSTOM_CUT_APPROVED=openclaw-gbrain-custom-runtime-cut` plus an explicit fork fetch URL/ref. |
+| 4. Doctor warnings/upstream route | runtime doctor healthy, resolver upstream PR open | Runtime frontmatter audit is clean and runtime `gbrain doctor --json` is now `status=healthy`, `health_score=100`, with no warning checks on the custom combined cut. Upstream resolver issue: <https://github.com/garrytan/gbrain/issues/617>. Resolver fix PR: <https://github.com/garrytan/gbrain/pull/619>. Stale-embed fix PR: <https://github.com/garrytan/gbrain/pull/626>. |
+| 5. Update flow automation | script pass, currentness blocked by custom cut/pins | `npm run check:gbrain-upstream -- --json` sees upstream `ee9ceb327a39b0c705ee945c6cfe821de11d34ed` / `0.27.0`. Runtime is `gbrain 0.27.0` at custom cut `de11d4c858b1a880931c008fbee3ceef92a8329a`, so the full-pass gate still blocks on `docker_pin_vs_upstream`, `runtime_sha_vs_upstream`, local checkout/package drift, and dirty local worktree. This is expected until PR #619/#620/#626 are consumed upstream or the custom cut is accepted as the durable target. |
 | 6. Remote MCP product interface | live pass with upstream concern | astack keeps upstream `gbrain serve --http`, owns the Railway deploy/env/token policy/canary/rollback layer, and now has live OAuth-backed canary evidence on `gbrain-remote-mcp`. The only remaining concern is that the InvalidTokenError provider fix is astack-applied until PR #620 is landed or consumed upstream. |
+
+Operational add-on: Twilio/AStack Voice is live as a capture surface. The post-deploy watchdog now restores the voice agent, public router, ngrok tunnel, and Twilio webhook on boot. A signed Twilio `/voice-gather` canary wrote and retrieved `voice-notes/2026/2026-05-05-twilio-voice-689b95a5b9` through GBrain search/get. This is `capture PASS`; the realtime WebSocket conversation path remains intentionally disabled until it gets a separate trust pass.
 
 ## Selected Path
 
@@ -74,7 +77,7 @@ Merge-gap assessment at `2026-05-05T06:14Z`:
 
 ## Completion Audit Snapshot
 
-Checked at `2026-05-05T00:56:53Z`. Result: `NOT_FULL_PASS`.
+Checked at `2026-05-05T17:38:49Z`. Result: `NOT_FULL_PASS`.
 
 | Requirement | Evidence | Status |
 | --- | --- | --- |
@@ -82,19 +85,19 @@ Checked at `2026-05-05T00:56:53Z`. Result: `NOT_FULL_PASS`.
 | Remote MCP DCR, admin route, CORS, log-redaction, scoped write denial covered | Fixture canary passed DCR disabled `404`, admin denial `404`, CORS default-deny, log redaction, and read-only write denial. | pass |
 | Remote MCP uses upstream `gbrain serve --http`, not a custom gateway | `services/gbrain-remote-mcp/start-gbrain-http.mjs` launches upstream HTTP serve with environment hardening and a temporary safety patch. | pass with concern |
 | Upstream GBrain owns core resolver/auth/embedding behavior | PR #619, PR #620, and PR #626 are open and mergeable, not merged/consumed. Non-merged PR states are now hard `BLOCKED`, not warnings. | blocked |
-| Direct GBrain live canary covers read/write/search/query/graph/timeline/raw/chunks/jobs/embed/delete/restore/health | After PR #626 was cherry-picked into runtime as `d050451`, stale embed job `1861` embedded 14 chunks. The direct canary now also submits a global stale-embed job before final health; latest full gate passed with `chunk_count=36097`, `embedded_count=36097`, `embed_coverage=1`, `missing_embeddings=0`, `brain_score=85`. | pass with upstream concern |
+| Direct GBrain live canary covers read/write/search/query/graph/timeline/raw/chunks/jobs/embed/delete/restore/health | Latest full gate passed with `page_count=13986`, `chunk_count=36114`, `embedded_count=36114`, `embed_coverage=1`, `missing_embeddings=0`, `brain_score=85`. | pass with upstream concern |
 | Scheduler no longer creates OpenClaw agent-wrapper sessions for migrated jobs | Runtime validate reports `enabled_agent_wrapper_count=0`; disabled wrapper jobs remain disabled. | pass |
-| Scheduler quota/cooldown fix has enough burn-in | Deployment `9a87eb62...` is live and canary job `1941` proved external quota skip behavior. Latest gate at `2026-05-05T06:09:05Z` reports `0.22h/24h`, no new dead jobs after cutoff. | blocked |
+| Scheduler quota/cooldown fix has enough burn-in | Deployment `9a87eb62...` is live and canary job `1941` proved external quota skip behavior. Latest gate at `2026-05-05T17:38:49Z` reports `11.7h/24h`, no new dead jobs after cutoff. | blocked |
 | Claude Code accesses the shared GBrain with a real tool call | Full gate passed `claude_code_shared_gbrain_canary`: get_page, put_page, search, delete_page, get_page include_deleted, restore_page, final get_page, plus independent final-state verification through direct GBrain `get_page`. | pass |
 | Codex accesses the shared GBrain with real tool calls | The full-pass gate passed `codex_shared_gbrain_canary`: health, search, put/get, delete, and restore against the shared GBrain MCP, plus independent final-state verification through direct GBrain `get_page`. Both Codex phases now use an explicit isolated GBrain MCP config. | pass |
-| Runtime GBrain doctor is `ok` | Runtime `gbrain frontmatter audit --json` is clean (`ok=true,total=0`). Runtime `gbrain doctor --json` now reports `health_score=95`; the only remaining doctor warning is `resolver_health` with 37 shipped routing warnings. | blocked |
-| Latest safe GBrain version is used or explicitly pinned | Upstream is now `ee9ceb327a39b0c705ee945c6cfe821de11d34ed` / `0.27.0`. Runtime GBrain is `0.26.7` plus runtime cherry-pick `d050451` from PR #626; Remote MCP Docker pin and verifier pin still point at `058fe695...`. Current upstream still includes migration v35 auto-RLS; read-only audit found 0 non-exempt public tables without RLS. Upgrade remains blocked until PR #619/#620/#626 are merged/consumed or a custom combined runtime cut is explicitly accepted. | blocked by new upstream and custom runtime patch |
+| Runtime GBrain doctor is `ok` | Runtime `gbrain doctor --json` now reports `status=healthy`, `health_score=100`, and no warning checks on the custom combined cut. | pass with upstream-clean concern |
+| Latest safe GBrain version is used or explicitly pinned | Upstream is `ee9ceb327a39b0c705ee945c6cfe821de11d34ed` / `0.27.0`. Runtime GBrain is `gbrain 0.27.0` at custom cut `de11d4c858b1a880931c008fbee3ceef92a8329a`; local checkout/package and durable pins still differ. Upgrade/currentness remains blocked until PR #619/#620/#626 are merged/consumed or the custom cut is accepted as the durable target. | blocked by custom cut and stale durable pins |
 | Local GBrain checkout is safe to update | `/Users/arshya/gbrain` is on `codex-gbrain-0.26.6-runtime-patches` with a dirty mode-only `src/cli.ts` change; it was intentionally not overwritten. | warning |
 | Runtime health has no current session/token/rate-limit storm | `GBRAIN_VERIFY_SINCE=30m npm run verify:gbrain -- --railway-current` reports current total/token/session/rate-limit lines all `0`. | pass |
 | Secrets not committed or printed in durable artifacts | Full gate scans the complete git diff plus durable readiness artifacts for GBrain tokens, DB URLs, OpenAI keys, bearer tokens, GitHub tokens, and literal client secrets; latest scan passed with `diff_bytes_scanned=0`. | pass |
 | Forbidden NIKIN production service untouched | No targeted command inspected/mutated/restarted/deployed/SSHed/logged the forbidden service; fixture script refuses its service ID with exit `2`. | pass |
 
-Conclusion: AStack has a working and useful dogfood layer, including live Remote MCP/OAuth, runtime GBrain `0.26.7`, and real shared-GBrain canaries from Claude Code and Codex. The broad frontmatter doctor blocker and stale-embedding blocker are fixed in the live target service. FULL PASS remains blocked by upstream PR landing/consumption, deployment plus burn-in of the new X/Twitter external-quota shell-job guard, the runtime cherry-pick, the upstream `0.27.0` currentness delta, and the remaining resolver doctor warning.
+Conclusion: AStack has a working and useful dogfood layer, including live Remote MCP/OAuth, runtime GBrain `0.27.0` custom cut, real shared-GBrain canaries from Claude Code and Codex, and Twilio voice-capture into GBrain. The broad frontmatter, resolver-doctor, and stale-embedding blockers are fixed in the live target service. FULL PASS remains blocked by upstream PR landing/consumption, durable pin/currentness cleanup, and completion of the 24h scheduler burn-in window.
 
 ## Prompt-to-Artifact Checklist
 
@@ -109,7 +112,7 @@ Conclusion: AStack has a working and useful dogfood layer, including live Remote
 | Upstream GBrain issue/PR opened for auth behavior | Issue #616 and PR #620. | pass, not merged |
 | Scheduler respects disabled migrated OpenClaw-agent jobs | `patches/direct-minions-scheduler.mjs`, `patches/start-astack.sh`, runtime validate `enabled_agent_wrapper_count=0`. | pass |
 | Scheduler shell-job fallback/skip/backoff path exists | `patches/openclaw-agent-job.sh`, `scripts/test-openclaw-agent-job.sh`, `npm run test:openclaw-agent-job`. | pass |
-| Scheduler done means 24-48h no new dead jobs | Gate currently reports no new dead jobs after new cutoff `2026-05-05T05:55:53Z`, but only `0.22h/24h` burn-in has elapsed. | blocked |
+| Scheduler done means 24-48h no new dead jobs | Gate currently reports no new dead jobs after new cutoff `2026-05-05T05:55:53Z`, but only `11.7h/24h` burn-in has elapsed. | blocked |
 | Claude Code uses shared live GBrain with real toolcalls | `scripts/gbrain-claude-code-canary.sh`, latest full gate `claude_code_shared_gbrain_canary` PASS with get/search/write/delete/restore and direct final-state verification. | pass |
 | Codex uses shared live GBrain with real toolcalls | `scripts/gbrain-codex-canary.sh`, latest full gate `codex_shared_gbrain_canary` PASS with health/search/write/read/delete/restore and direct final-state verification. | pass |
 | Resolver doctor warnings investigated and routed upstream | Issue #617 and PR #619; runtime doctor gate still warns until consumed. | blocked |
@@ -133,7 +136,7 @@ Conclusion: AStack has a working and useful dogfood layer, including live Remote
   - `--validate` reports total/enabled/disabled cron jobs.
   - `--once` refuses disabled jobs unless `--force-disabled` is passed.
 - Added `patches/openclaw-agent-job.sh`.
-  - Defaults scheduled OpenClaw-agent wrapper jobs to `openai/gpt-5.4`.
+  - Defaults scheduled OpenClaw-agent wrapper jobs to `openai-codex/gpt-5.4`.
   - Supports `OPENCLAW_AGENT_JOB_MODEL` and `OPENCLAW_AGENT_JOB_FALLBACK_MODEL`.
   - Retries fallback on quota/cooldown/rate-limit text if configured.
   - Preserves failing exit codes when the primary run fails and no fallback succeeds.
@@ -521,10 +524,10 @@ railway up --project fbdb217b-060f-4f1e-8697-08a6288a19c4 \
 ```
 
 ```bash
-grep -n "fallback_err_file\\|OPENCLAW_AGENT_JOB_DATA_HOME\\|fallback_status\\|openai/gpt-5.4" \
+grep -n "fallback_err_file\\|OPENCLAW_AGENT_JOB_DATA_HOME\\|fallback_status\\|openai-codex/gpt-5.4" \
   /data/.openclaw/cron/bin/openclaw-agent-job.sh
 # runtime wrapper contains OPENCLAW_AGENT_JOB_DATA_HOME, fallback_err_file,
-# fallback_status, and default openai/gpt-5.4
+# fallback_status, and default openai-codex/gpt-5.4
 ```
 
 ```bash
@@ -1182,15 +1185,12 @@ Final custom-cut canaries:
 - `npm run canary:gbrain-claude`: `PASS`
   - `get_page`, `put_page`, `search`, `delete_page`, `get_page_include_deleted`, `restore_page`, `get_page_restored`; final state verified by direct `gbrain get_page`.
 - OpenClaw-mediated primary-agent canary: `PASS`
-  - Runtime config initially still used `openai-codex/gpt-5.5` as primary. A canary failed because `openai-codex/gpt-5.5` returned auth-invalid and `openai/gpt-5.4` returned quota-exceeded.
-  - Runtime config was changed to primary `anthropic/claude-sonnet-4-5` with fallback `google/gemini-2.5-pro`.
-  - Follow-up canary succeeded through OpenClaw itself using `gbrain__put_page`, `gbrain__get_page`, and `gbrain__search`.
-  - Evidence: `status=ok`, model `anthropic/claude-sonnet-4-5`, slug `system/canaries/gbrain-openclaw-primary-canary-2026-05-05`, `sentinel_present=true`, tool failures `0`.
-- `npm run verify:gbrain-full-pass-gates -- --skip-claude --skip-codex --skip-direct --skip-remote --json` at `2026-05-05T07:36:16Z`: `BLOCKED`
-  - PASS: runtime doctor, runtime shell quota guard, secret scan.
-  - BLOCKED: PR #619/#620/#626 still open, custom runtime currentness versus upstream master, 30-minute risk logs still include intentionally induced OpenAI auth/quota probe failures, scheduler burn-in `1.7h/24h` with no new dead jobs so far.
-  - Note: 30-minute risk-log checks temporarily show the intentionally induced OpenAI auth/quota failures from the model-fallback probe. That is not a GBrain failure; the runtime primary model was changed afterward and the OpenClaw-mediated canary passed.
-  - Follow-up `GBRAIN_VERIFY_SINCE=2m npm run verify:gbrain -- --railway-current` after switching primary model reports token mismatch `0`, sessions/store `0`, rate-limit `0`.
+  - Earlier canaries exposed invalid Codex OAuth / API-key quota fallback problems; the 2026-05-05 follow-up repaired the OAuth profiles and made Codex OAuth the normal route again.
+  - Current routing is default `openai-codex/gpt-5.5`, `GPT` alias `openai-codex/gpt-5.4`, scheduled agent wrapper default `openai-codex/gpt-5.4`, fallback `google/gemini-2.5-pro`.
+  - Follow-up canaries succeeded through OpenClaw and Codex with provider `openai-codex`.
+- `npm run verify:gbrain-full-pass-gates -- --json` at `2026-05-05T17:38:49Z`: `BLOCKED`
+  - PASS: Remote MCP/OAuth fixture canary, Claude Code shared-GBrain canary, Codex shared-GBrain canary, direct GBrain live canary, runtime doctor, runtime risk logs, runtime shell quota guard, secret scan.
+  - BLOCKED: PR #619/#620/#626 still open, custom runtime/currentness versus upstream master and durable pins, scheduler burn-in `11.7h/24h` with no new dead jobs after cutoff.
 
 Oracle Pro final gate:
 
@@ -1211,12 +1211,12 @@ Rollback updates:
   - Roll service `gbrain-remote-mcp` from `b57e27c0-351e-4db1-9c0e-914922c1769d` back to previous successful `aa3baa40-a303-4bc0-890f-99a8120cbf69`.
   - This reverts Remote MCP from `0.27.0` custom cut to `0.26.7`; use only if the Remote MCP canary regresses.
 - OpenClaw model rollback:
-  - Previous unstable default was `openai-codex/gpt-5.5` with no reliable fallback; keep it off primary until the OpenAI Codex OAuth profile is repaired and canaried.
-  - Current stable dogfood setting: `openclaw models set anthropic/claude-sonnet-4-5` and `openclaw models fallbacks add google/gemini-2.5-pro`.
+  - Current dogfood setting is Codex OAuth-first: default `openai-codex/gpt-5.5`, `GPT` alias and scheduled agent default `openai-codex/gpt-5.4`, fallback `google/gemini-2.5-pro`.
+  - Roll back only if Codex OAuth canaries regress; keep API-key OpenAI models out of the normal agent routing unless no OAuth path exists for the specific feature.
 
 ## Remaining FULL PASS Gates
 
-1. Complete 24-48h scheduler burn-in from cutoff `2026-05-05T05:55:53Z`. Latest strict gate at `2026-05-05T07:36:16Z` reports `1.7h/24h` complete and no new dead jobs after cutoff.
+1. Complete 24-48h scheduler burn-in from cutoff `2026-05-05T05:55:53Z`. Latest strict gate at `2026-05-05T17:38:49Z` reports `11.7h/24h` complete and no new dead jobs after cutoff.
 2. Land or consume upstream GBrain PR #619 so resolver health is upstream-owned, not custom-cut-owned.
 3. Land or consume upstream GBrain PR #620 so invalid/expired MCP bearer tokens return clean OAuth auth failures from upstream, not only from the astack Remote MCP wrapper/custom cut.
 4. Land or consume upstream GBrain PR #626 so source-scoped stale embedding is not a custom cherry-pick. Current GitHub permission on `garrytan/gbrain` is `READ`; AStack cannot merge these PRs directly from this account.

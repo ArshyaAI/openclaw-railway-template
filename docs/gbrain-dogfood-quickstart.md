@@ -25,6 +25,7 @@ GBrain is the shared memory layer.
 | Local Codex | Local agent can read/write/search shared GBrain via the supported setup | Canary passed |
 | Local Claude Code | Claude Code can use the same shared GBrain | Canary passed |
 | Supabase/Postgres | Shared durable data layer | Runtime doctor healthy |
+| Twilio/AStack Voice | Phone-call capture into GBrain via Twilio speech gather | Capture canary passed; realtime conversation remains disabled until the WebSocket path is trusted |
 
 Keep these layers separate:
 
@@ -42,6 +43,24 @@ Keep these layers separate:
 - Keep NIKIN main production out of this workflow unless explicitly scoped.
 - Treat Remote MCP token creation/revocation as an admin operation; never put the
   token value in docs, commits, logs, or screenshots.
+
+## OAuth/API Key Policy
+
+Current rule:
+
+- Use `openai-codex/*` OAuth for OpenClaw/AStack agent text and reasoning wherever
+  that path exists.
+- Do not silently route agent text work through `openai/gpt-*` API-key models when
+  a matching Codex OAuth model is available.
+- Keep API keys for paths that currently require them: Twilio/OpenAI Realtime,
+  embeddings, and non-OpenAI providers such as Gemini or Anthropic when selected.
+
+Live OpenClaw routing after the 2026-05-05 deploy:
+
+- Default model: `openai-codex/gpt-5.5`
+- `GPT` alias: `openai-codex/gpt-5.4`
+- Scheduled agent wrapper default: `openai-codex/gpt-5.4`
+- Fallback: `google/gemini-2.5-pro`
 
 ## Core Commands
 
@@ -119,6 +138,30 @@ gbrain stats
 gbrain orphans --count
 gbrain jobs stats
 ```
+
+## Voice/Twilio Capture
+
+Twilio is live as a capture path, not yet as a trusted realtime conversation path.
+
+What works now:
+
+- Incoming/outgoing Twilio calls reach the AStack Voice service.
+- Voice runs in `gather` mode.
+- Speech is written to `voice-notes/YYYY/<slug>` in GBrain.
+- A 2026-05-05 signed Twilio webhook canary wrote and retrieved
+  `voice-notes/2026/2026-05-05-twilio-voice-689b95a5b9`.
+
+Use it for short captures:
+
+```text
+Call AStack Voice and say one concise note, decision, or follow-up.
+Then ask AStack: "Nutze GBrain. Finde meine letzte Voice Note und mach daraus
+Tasks, Decisions und eine Timeline."
+```
+
+Do not treat voice as a full realtime assistant yet. The OpenAI Realtime API key
+canary is green, but the public WebSocket/realtime call path still needs a
+separate trust pass before it should replace gather capture.
 
 ## Daily Operating Loop
 
@@ -296,5 +339,7 @@ Use GBrain now for dogfooding. Do not call it upstream-clean FULL PASS until:
 - PR #620 is merged/consumed upstream.
 - PR #626 is merged/consumed upstream.
 - Runtime and Remote MCP move back from the custom SHA to upstream-clean GBrain.
-- Scheduler burn-in completes with no new dead shell jobs.
+- Scheduler burn-in completes with no new dead shell jobs. Latest refreshed gate:
+  `11.7h/24h` complete at `2026-05-05T17:38Z`, with no new dead jobs after the
+  cutoff.
 - Fresh risk logs and canaries stay clean.
