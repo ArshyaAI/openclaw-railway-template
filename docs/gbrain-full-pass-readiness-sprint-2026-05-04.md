@@ -1056,6 +1056,16 @@ Runtime deployment status:
 - Gate after deploy:
   - `GBRAIN_FULL_PASS_DEAD_JOB_CUTOFF=2026-05-05T05:55:53Z npm run verify:gbrain-full-pass-gates -- --skip-claude --skip-codex --skip-direct --skip-remote --json`
   - status `BLOCKED`, not `FAIL`; scheduler burn-in `0.05h/24h`, no new dead jobs after cutoff.
+- Post-deploy direct GBrain live canary:
+  - Command: `npm run canary:gbrain`
+  - Status: `PASS`
+  - Covered put/get/tag/search/query/versions/delete/restore, links/backlinks/graph, timeline, raw data, chunks, jobs, explicit embed job, global stale embed job, stats, and health.
+  - Embed evidence: `chunk_count=36097`, `embedded_count=36097`, `missing_embeddings=0`, `embed_coverage=1`, `brain_score=85`.
+- Post-deploy Remote MCP fixture canary:
+  - Command: `npm run canary:gbrain-remote-fixture`
+  - Status: `PASS`
+  - Covered missing token `401`, bad token `401`, CORS default-deny, DCR disabled `404`, admin denial `404`, expired token `401`, revoked client denial `400`, log redaction, read-only write denial, tools list, read/write/search/version/delete/restore, and fixture client revocation.
+  - Remote target verified: `gbrain-remote-mcp` / `beab847a-12bb-499e-a44c-bf5d1982924f`.
 - Expected impact: future X/Twitter credits-depleted collector runs become recorded skips instead of GBrain `DEAD` shell jobs; real script failures still fail.
 - Rollback: redeploy previous Railway deployment `afff717e-39e4-472b-acfd-98f9fd66c505` for `openclaw-railway-template`, or restore `/data/.openclaw/cron/bin/gbrain-submit-shell-job.sh` and `/data/.openclaw/cron/bin/astack-shell-job-runner.sh` from boot backups created by `start-astack.sh`.
 
