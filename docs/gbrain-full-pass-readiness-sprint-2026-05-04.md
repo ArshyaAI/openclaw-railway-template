@@ -34,7 +34,7 @@ Allowed Railway operations in this sprint are limited to the OpenClaw target ser
 | 2. Scheduler/quota fix | live patch deployed, post-slot clean, 24-48h monitoring pending | Deployment `afff717e-39e4-472b-acfd-98f9fd66c505` keeps the corrected astack-owned scheduler/wrapper and hardens GBrain supervisor boot. Runtime validate: `enabled_cron=12`, `disabled_cron=7`; scheduler startup logged `skip_disabled_startup` for all 7 disabled OpenClaw-agent wrapper jobs. A post-critical-slot watch at `2026-05-04T20:04:26Z` found no new dead shell jobs after historical job `1781`; fresh logs had 0 token mismatch, 0 session-store churn, and 0 rate-limit lines. `openclaw-agent-job.sh` now defaults to `openai/gpt-5.4` if intentionally enabled and preserves failure exit codes across no-fallback, fallback-success, and fallback-fail paths. |
 | 3. Claude Code canary | pass | After the 2am Europe/Zurich quota reset, `npm run canary:gbrain-claude` passed with real GBrain MCP operations: get_page, put_page, search, delete_page, include_deleted get_page, restore_page, and final get_page. Latest full gate evidence slug: `system/canaries/gbrain-claude-code-canary-2026-05-05`. |
 | 4. Doctor warnings/upstream route | frontmatter fixed, resolver upstream PR open, stale-embed patch live | Runtime frontmatter audit is now clean: `ok=true,total=0` after the targeted runtime source fix. Runtime `embed --stale` is also clean after cherry-picking PR #626 into `/data/gbrain`: dry-run now reports `Would embed 0 chunks`. Runtime doctor still warns on 37 shipped skill routing misses on GBrain `0.26.7`. Upstream resolver issue: <https://github.com/garrytan/gbrain/issues/617>. Resolver fix PR: <https://github.com/garrytan/gbrain/pull/619>. Stale-embed fix PR: <https://github.com/garrytan/gbrain/pull/626>. |
-| 5. Update flow automation | currentness blocked by new upstream | `npm run check:gbrain-upstream -- --json` now sees upstream `9c2dc4cd544cd8013e0eee7a6ffb8536d3c2f13a` / `0.26.8`. Runtime remains `d050451df5852cc7414601e92b927469e374f75e` / `0.26.7` with PR #626 cherry-picked; Docker/verifier pins remain `058fe695...`. The guarded upgrade plan now correctly reports runtime version and calls out v0.26.8 migration v35 RLS impact. A read-only v35 audit on the target DB found `non_exempt_public_tables_without_rls=0`, so the RLS backfill would not currently flip any existing non-exempt public table. Runtime was not upgraded in this pass because pure upstream `0.26.8` would drop the live #626 patch unless upstream consumes the PRs or a custom combined runtime cut is explicitly accepted. |
+| 5. Update flow automation | currentness blocked by new upstream | `npm run check:gbrain-upstream -- --json` now sees upstream `9c2dc4cd544cd8013e0eee7a6ffb8536d3c2f13a` / `0.26.8`. Runtime remains `d050451df5852cc7414601e92b927469e374f75e` / `0.26.7` with PR #626 cherry-picked; Docker/verifier pins remain `058fe695...`. The guarded upgrade plan now correctly reports runtime version and calls out v0.26.8 migration v35 RLS impact. A read-only v35 audit on the target DB found `non_exempt_public_tables_without_rls=0`, so the RLS backfill would not currently flip any existing non-exempt public table. Runtime was not upgraded in this pass because pure upstream `0.26.8` would drop the live #626 patch unless upstream consumes the PRs or a custom combined runtime cut is explicitly accepted. The custom combined cut path is now explicitly double-gated and requires `GBRAIN_RUNTIME_CUSTOM_CUT_APPROVED=openclaw-gbrain-custom-runtime-cut` plus an explicit fork fetch URL/ref. |
 | 6. Remote MCP product interface | live pass with upstream concern | astack keeps upstream `gbrain serve --http`, owns the Railway deploy/env/token policy/canary/rollback layer, and now has live OAuth-backed canary evidence on `gbrain-remote-mcp`. The only remaining concern is that the InvalidTokenError provider fix is astack-applied until PR #620 is landed or consumed upstream. |
 
 ## Completion Audit Snapshot
@@ -92,6 +92,8 @@ Conclusion: AStack has a working and useful dogfood layer, including live Remote
 - Added `scripts/gbrain-runtime-upgrade-gate.mjs` and npm script `upgrade:gbrain-runtime`.
   - Defaults to plan mode.
   - Requires `GBRAIN_RUNTIME_UPGRADE_APPROVED=openclaw-gbrain-runtime-upgrade` for runtime mutation.
+  - Requires a second explicit approval, `GBRAIN_RUNTIME_CUSTOM_CUT_APPROVED=openclaw-gbrain-custom-runtime-cut`, when `GBRAIN_RUNTIME_UPGRADE_SHA` is not upstream master.
+  - Requires custom runtime cuts to declare `GBRAIN_RUNTIME_UPGRADE_FETCH_URL` and `GBRAIN_RUNTIME_UPGRADE_REF`; the prepared combined candidate uses `https://github.com/ArshyaAI/gbrain.git` and `astack/full-pass-candidate-0.26.8`.
   - Captures a backup path, target SHA, expected impact, rollback, and required post-upgrade canaries.
   - Correctly reports detached runtime branch/version and includes v0.26.8 migration v35 pre-execute RLS audit requirements.
   - Stops and restarts the GBrain supervisor with an explicit CLI path during future guarded runtime upgrades.
@@ -797,21 +799,52 @@ npm run upgrade:gbrain-runtime -- --json
 # current.sha=d050451df5852cc7414601e92b927469e374f75e
 # current.version="gbrain 0.26.7"
 # target_sha=9c2dc4cd544cd8013e0eee7a6ffb8536d3c2f13a
+# target_is_upstream_master=true
+# custom_runtime_cut_fetch_required=false
+# fetch.source=origin
+# fetch.ref=refs/heads/master
 # pre_execute_readonly_checks include v35 RLS audit and a stop if non-exempt
 # RLS-off public tables exist.
 
+GBRAIN_RUNTIME_UPGRADE_SHA=bf3ce7595713ecd721bec849392b4acf6b036a8b \
+  GBRAIN_RUNTIME_UPGRADE_FETCH_URL=https://github.com/ArshyaAI/gbrain.git \
+  GBRAIN_RUNTIME_UPGRADE_REF=astack/full-pass-candidate-0.26.8 \
+  npm run upgrade:gbrain-runtime -- --json
+# status=PLAN
+# target_is_upstream_master=false
+# custom_runtime_cut_approval_required=openclaw-gbrain-custom-runtime-cut
+# custom_runtime_cut_fetch_required=true
+# custom_runtime_cut_approved=false
+# custom_runtime_cut_fetch_declared=true
+# fetch.source=https://github.com/ArshyaAI/gbrain.git
+# fetch.ref=astack/full-pass-candidate-0.26.8
+# no execution without both GBRAIN_RUNTIME_UPGRADE_APPROVED and
+# GBRAIN_RUNTIME_CUSTOM_CUT_APPROVED approval phrases.
+
+GBRAIN_RUNTIME_UPGRADE_APPROVED=openclaw-gbrain-runtime-upgrade \
+  GBRAIN_RUNTIME_CUSTOM_CUT_APPROVED=openclaw-gbrain-custom-runtime-cut \
+  GBRAIN_RUNTIME_UPGRADE_SHA=bf3ce7595713ecd721bec849392b4acf6b036a8b \
+  npm run upgrade:gbrain-runtime -- --execute --json
+# status=BLOCKED_CUSTOM_RUNTIME_FETCH_REQUIRED
+# approved=true
+# custom_runtime_cut_approved=true
+# custom_runtime_cut_fetch_declared=false
+# fetch.source=null
+# fetch.ref=null
+# no runtime mutation without explicit custom fetch URL and ref.
+
 npm run verify:gbrain-full-pass-gates -- --skip-claude --skip-codex --skip-direct --skip-remote --json
-# checked_at=2026-05-05T00:39:26Z
+# checked_at=2026-05-05T00:49:33Z
 # status=BLOCKED
 # PASS: openclaw_runtime_risk_logs
-# PASS: secret_scan_full_diff_and_artifacts
+# PASS: secret_scan_full_diff_and_artifacts, diff_bytes_scanned=15039
 # BLOCKED: upstream_pr_619_resolver open/mergeable
 # BLOCKED: upstream_pr_620_http_auth open/mergeable
 # BLOCKED: upstream_pr_626_stale_embed_source_scope open/mergeable
 # BLOCKED: update_flow_currentness expected upstream 9c2dc4c / 0.26.8,
 #          runtime d050451 / 0.26.7
 # BLOCKED: runtime_gbrain_doctor status=warnings (resolver_health only)
-# BLOCKED: scheduler_dead_jobs_burn_in 4.6h/24h, no new dead jobs
+# BLOCKED: scheduler_dead_jobs_burn_in 4.8h/24h, no new dead jobs
 ```
 
 ## Rollback
@@ -853,5 +886,5 @@ Remote MCP rollback:
 2. Land or consume upstream GBrain PR #619 so runtime doctor can move from shipped resolver warnings to `ok`.
 3. Land or consume upstream GBrain PR #620 so invalid/expired MCP bearer tokens return clean OAuth auth failures from upstream, not only from the astack wrapper.
 4. Land or consume upstream GBrain PR #626 so runtime source-scoped stale embedding is not a custom cherry-pick.
-5. Upgrade/pin the approved runtime and durable astack pins against upstream `0.26.8` / `9c2dc4cd544cd8013e0eee7a6ffb8536d3c2f13a`, after deciding whether to wait for PR #619/#620/#626 upstream consumption or create an explicitly accepted custom combined runtime cut.
+5. Upgrade/pin the approved runtime and durable astack pins against upstream `0.26.8` / `9c2dc4cd544cd8013e0eee7a6ffb8536d3c2f13a`, after deciding whether to wait for PR #619/#620/#626 upstream consumption or create an explicitly accepted custom combined runtime cut. The custom cut path now requires both approval phrases and the explicit `ArshyaAI/gbrain` fetch URL/ref before runtime mutation.
 6. Decide whether to update the local custom checkout `/Users/arshya/gbrain` from package `0.26.6` to `0.26.8`; it is intentionally preserved because it is a custom dirty branch.

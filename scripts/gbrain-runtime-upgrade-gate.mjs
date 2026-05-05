@@ -7,11 +7,20 @@ const TARGET_SERVICE_ID = '6f333a2b-07d9-4219-8531-3b96fbc6a2f9';
 const TARGET_SERVICE_NAME = 'openclaw-railway-template';
 const FORBIDDEN_SERVICE_ID = '63b84308-25d7-4b03-9c23-4d0d7239728f';
 const APPROVAL_PHRASE = 'openclaw-gbrain-runtime-upgrade';
+const CUSTOM_CUT_APPROVAL_PHRASE = 'openclaw-gbrain-custom-runtime-cut';
+const DEFAULT_FETCH_SOURCE = 'origin';
 
 const args = new Set(process.argv.slice(2));
 const execute = args.has('--execute');
 const json = args.has('--json');
-const targetSha = process.env.GBRAIN_RUNTIME_UPGRADE_SHA || readUpstreamSha();
+const upstreamSha = readUpstreamSha();
+const targetSha = process.env.GBRAIN_RUNTIME_UPGRADE_SHA || upstreamSha;
+const isCustomRuntimeCut = targetSha !== upstreamSha;
+const customFetchDeclared = !isCustomRuntimeCut || Boolean(
+  process.env.GBRAIN_RUNTIME_UPGRADE_FETCH_URL && process.env.GBRAIN_RUNTIME_UPGRADE_REF,
+);
+const fetchSource = process.env.GBRAIN_RUNTIME_UPGRADE_FETCH_URL || (isCustomRuntimeCut ? null : DEFAULT_FETCH_SOURCE);
+const fetchRef = process.env.GBRAIN_RUNTIME_UPGRADE_REF || (isCustomRuntimeCut ? null : 'refs/heads/master');
 const stamp = new Date().toISOString().replace(/[:.]/g, '-');
 
 if (TARGET_SERVICE_ID === FORBIDDEN_SERVICE_ID) {
@@ -33,9 +42,19 @@ const base = {
   },
   mode: execute ? 'execute' : 'plan',
   approval_required: APPROVAL_PHRASE,
+  custom_runtime_cut_approval_required: isCustomRuntimeCut ? CUSTOM_CUT_APPROVAL_PHRASE : null,
+  custom_runtime_cut_fetch_required: isCustomRuntimeCut,
   approved: process.env.GBRAIN_RUNTIME_UPGRADE_APPROVED === APPROVAL_PHRASE,
+  custom_runtime_cut_approved: !isCustomRuntimeCut || process.env.GBRAIN_RUNTIME_CUSTOM_CUT_APPROVED === CUSTOM_CUT_APPROVAL_PHRASE,
+  custom_runtime_cut_fetch_declared: customFetchDeclared,
   current,
+  upstream_sha: upstreamSha,
   target_sha: targetSha,
+  target_is_upstream_master: !isCustomRuntimeCut,
+  fetch: {
+    source: fetchSource,
+    ref: fetchRef,
+  },
   backup_dir: backupDir,
   expected_impact: [
     'mutates only /data/gbrain and migration state on the approved OpenClaw target service',
@@ -49,6 +68,7 @@ const base = {
     'audit public tables where relrowsecurity=false and no GBRAIN:RLS_EXEMPT comment exists',
     'if that audit returns any rows, stop and add explicit GBRAIN:RLS_EXEMPT comments or accept the RLS backfill before executing',
     'decide whether upstream PR #619/#620/#626 must be merged/consumed first; upgrading to pure upstream 0.26.8 drops the live #626 cherry-pick',
+    'if target_sha is not upstream master, require GBRAIN_RUNTIME_CUSTOM_CUT_APPROVED=openclaw-gbrain-custom-runtime-cut and explicit GBRAIN_RUNTIME_UPGRADE_FETCH_URL/REF for the custom fork branch',
   ],
   rollback: [
     `cd /data/gbrain && git checkout ${current.sha || '<old_sha>'}`,
@@ -76,12 +96,30 @@ if (process.env.GBRAIN_RUNTIME_UPGRADE_APPROVED !== APPROVAL_PHRASE) {
   print({
     status: 'BLOCKED_APPROVAL_REQUIRED',
     ...base,
-    run_with: `GBRAIN_RUNTIME_UPGRADE_APPROVED=${APPROVAL_PHRASE} npm run upgrade:gbrain-runtime -- --execute --json`,
+    run_with: buildRunWith(),
   });
   process.exit(2);
 }
 
-const execution = executeRemoteUpgrade(targetSha, backupDir);
+if (isCustomRuntimeCut && process.env.GBRAIN_RUNTIME_CUSTOM_CUT_APPROVED !== CUSTOM_CUT_APPROVAL_PHRASE) {
+  print({
+    status: 'BLOCKED_CUSTOM_RUNTIME_CUT_APPROVAL_REQUIRED',
+    ...base,
+    run_with: buildRunWith(),
+  });
+  process.exit(2);
+}
+
+if (isCustomRuntimeCut && !customFetchDeclared) {
+  print({
+    status: 'BLOCKED_CUSTOM_RUNTIME_FETCH_REQUIRED',
+    ...base,
+    run_with: buildRunWith(),
+  });
+  process.exit(2);
+}
+
+const execution = executeRemoteUpgrade(targetSha, backupDir, fetchSource, fetchRef);
 print({
   status: 'EXECUTED',
   ...base,
@@ -120,7 +158,7 @@ function readRuntime() {
   };
 }
 
-function executeRemoteUpgrade(sha, backupPath) {
+function executeRemoteUpgrade(sha, backupPath, source, ref) {
   const script = [
     'set -euo pipefail',
     'export HOME=/data',
@@ -130,6 +168,8 @@ function executeRemoteUpgrade(sha, backupPath) {
     'export PATH=/data/.bun/bin:/app/node_modules/.bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
     `target_sha=${quote(sha)}`,
     `backup_dir=${quote(backupPath)}`,
+    `fetch_source=${quote(source)}`,
+    `fetch_ref=${quote(ref)}`,
     'mkdir -p "$backup_dir"',
     'cd /data/gbrain',
     'old_sha="$(git rev-parse HEAD)"',
@@ -144,7 +184,7 @@ function executeRemoteUpgrade(sha, backupPath) {
     '  supervisor_was_running=1',
     '  /data/.bun/bin/gbrain jobs supervisor stop --json 2>&1 | tee "$backup_dir/supervisor-stop.json"',
     'fi',
-    'git fetch origin',
+    'git fetch "$fetch_source" "$fetch_ref"',
     'git checkout "$target_sha"',
     'bun install --frozen-lockfile',
     '/data/.bun/bin/gbrain --version | tee "$backup_dir/new_version.txt"',
@@ -162,6 +202,18 @@ function executeRemoteUpgrade(sha, backupPath) {
   return {
     output: redact(text),
   };
+}
+
+function buildRunWith() {
+  const parts = [`GBRAIN_RUNTIME_UPGRADE_APPROVED=${APPROVAL_PHRASE}`];
+  if (isCustomRuntimeCut) {
+    parts.push(`GBRAIN_RUNTIME_CUSTOM_CUT_APPROVED=${CUSTOM_CUT_APPROVAL_PHRASE}`);
+    parts.push('GBRAIN_RUNTIME_UPGRADE_FETCH_URL=https://github.com/ArshyaAI/gbrain.git');
+    parts.push('GBRAIN_RUNTIME_UPGRADE_REF=astack/full-pass-candidate-0.26.8');
+    parts.push(`GBRAIN_RUNTIME_UPGRADE_SHA=${targetSha}`);
+  }
+  parts.push('npm run upgrade:gbrain-runtime -- --execute --json');
+  return parts.join(' ');
 }
 
 function railwaySsh(command, opts = {}) {
