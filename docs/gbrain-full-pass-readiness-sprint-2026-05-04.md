@@ -746,6 +746,15 @@ npm run check:gbrain-upstream -- --json
 ```
 
 ```bash
+# Non-deployed custom runtime candidate prepared for explicit approval only:
+# fork=ArshyaAI/gbrain
+# branch=astack/full-pass-candidate-0.26.8
+# head=bf3ce75
+# composition=upstream 9c2dc4c + #619 + #620 + #626
+# pushed=https://github.com/ArshyaAI/gbrain/tree/astack/full-pass-candidate-0.26.8
+```
+
+```bash
 # Targeted upstream PR tests after rebase:
 HOME=$(mktemp -d /tmp/gbrain-test-home.XXXXXX) \
   bun test test/check-resolvable.test.ts test/check-resolvable-cli.test.ts \
@@ -764,6 +773,17 @@ bun test test/embed.serial.test.ts --timeout 30000
 # PR #626: 12 pass, 0 fail
 bun run typecheck
 # PR #626: pass
+
+# Combined candidate verification:
+HOME=$(mktemp -d /tmp/gbrain-test-home.XXXXXX) \
+  bun test test/check-resolvable.test.ts test/check-resolvable-cli.test.ts \
+  test/doctor.test.ts test/routing-eval.test.ts test/routing-eval-cli.test.ts \
+  test/oauth.test.ts test/e2e/serve-http-oauth.test.ts test/embed.serial.test.ts \
+  --timeout 30000
+# candidate branch astack/full-pass-candidate-0.26.8:
+# 154 pass, 26 skip because DATABASE_URL was not set, 0 fail
+bun run typecheck
+# candidate branch: pass
 ```
 
 ```bash
