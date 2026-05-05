@@ -40,7 +40,7 @@ safe_job_name="$(printf '%s' "$job_name" | tr -cs 'A-Za-z0-9._-' '-')"
 safe_slot="$(printf '%s' "$slot" | tr -cs 'A-Za-z0-9._-' '-')"
 session_id="${safe_job_name}-${safe_slot}-$$"
 
-primary_model="${OPENCLAW_AGENT_JOB_MODEL:-openai/gpt-5.4}"
+primary_model="${OPENCLAW_AGENT_JOB_MODEL:-openai-codex/gpt-5.4}"
 fallback_model="${OPENCLAW_AGENT_JOB_FALLBACK_MODEL:-}"
 
 run_agent() {

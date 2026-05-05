@@ -87,12 +87,12 @@ assert_status 42 run_wrapper primary_fail_no_fallback
 grep -qx 'openai-codex/gpt-5.5' "$tmpdir/models.log"
 
 : > "$tmpdir/models.log"
-OPENCLAW_AGENT_JOB_FALLBACK_MODEL="openai/gpt-5.4" assert_status 0 run_wrapper fallback_success
-printf 'openai-codex/gpt-5.5\nopenai/gpt-5.4\n' > "$tmpdir/expected-models.log"
+OPENCLAW_AGENT_JOB_FALLBACK_MODEL="openai-codex/gpt-5.4" assert_status 0 run_wrapper fallback_success
+printf 'openai-codex/gpt-5.5\nopenai-codex/gpt-5.4\n' > "$tmpdir/expected-models.log"
 cmp "$tmpdir/expected-models.log" "$tmpdir/models.log"
 
 : > "$tmpdir/models.log"
-OPENCLAW_AGENT_JOB_FALLBACK_MODEL="openai/gpt-5.4" assert_status 77 run_wrapper fallback_fail
+OPENCLAW_AGENT_JOB_FALLBACK_MODEL="openai-codex/gpt-5.4" assert_status 77 run_wrapper fallback_fail
 cmp "$tmpdir/expected-models.log" "$tmpdir/models.log"
 
 printf 'openclaw-agent-job tests passed\n'
