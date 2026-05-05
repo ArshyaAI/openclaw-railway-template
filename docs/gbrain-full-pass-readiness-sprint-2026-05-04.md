@@ -37,6 +37,15 @@ Allowed Railway operations in this sprint are limited to the OpenClaw target ser
 | 5. Update flow automation | currentness blocked by new upstream | `npm run check:gbrain-upstream -- --json` now sees upstream `9c2dc4cd544cd8013e0eee7a6ffb8536d3c2f13a` / `0.26.8`. Runtime remains `d050451df5852cc7414601e92b927469e374f75e` / `0.26.7` with PR #626 cherry-picked; Docker/verifier pins remain `058fe695...`. The guarded upgrade plan now correctly reports runtime version and calls out v0.26.8 migration v35 RLS impact. A read-only v35 audit on the target DB found `non_exempt_public_tables_without_rls=0`, so the RLS backfill would not currently flip any existing non-exempt public table. Runtime was not upgraded in this pass because pure upstream `0.26.8` would drop the live #626 patch unless upstream consumes the PRs or a custom combined runtime cut is explicitly accepted. The custom combined cut path is now explicitly double-gated and requires `GBRAIN_RUNTIME_CUSTOM_CUT_APPROVED=openclaw-gbrain-custom-runtime-cut` plus an explicit fork fetch URL/ref. |
 | 6. Remote MCP product interface | live pass with upstream concern | astack keeps upstream `gbrain serve --http`, owns the Railway deploy/env/token policy/canary/rollback layer, and now has live OAuth-backed canary evidence on `gbrain-remote-mcp`. The only remaining concern is that the InvalidTokenError provider fix is astack-applied until PR #620 is landed or consumed upstream. |
 
+## Selected Path
+
+Decision at `2026-05-05T01:05:11Z`: use the upstream-clean wait path, not the custom runtime cut.
+
+- Custom runtime cut remains not approved. Do not execute a custom GBrain runtime checkout unless this decision is explicitly reversed with `openclaw-gbrain-custom-runtime-cut`.
+- Wait for upstream PR #619, #620, and #626 to be merged or otherwise consumed, then update/pin the OpenClaw runtime and durable astack pins against upstream.
+- Wait for scheduler burn-in. Earliest 24h burn-in checkpoint is `2026-05-05T20:04:26Z` (`2026-05-05 22:04:26 Europe/Zurich`); 48h checkpoint is `2026-05-06T20:04:26Z` (`2026-05-06 22:04:26 Europe/Zurich`).
+- Latest quick gate after this decision remains `BLOCKED`: PRs open/mergeable, runtime `0.26.7` versus upstream `0.26.8`, doctor `resolver_health` warnings, burn-in `5.0h/24h`, no new dead jobs, no current token/session/rate-limit logs, secret scan pass.
+
 ## Completion Audit Snapshot
 
 Checked at `2026-05-05T00:56:53Z`. Result: `NOT_FULL_PASS`.
@@ -67,6 +76,7 @@ Conclusion: AStack has a working and useful dogfood layer, including live Remote
 | --- | --- | --- |
 | Start from read-only baseline and correct target | `Scope` section, `verify:gbrain -- --railway-current`, `verify:gbrain -- --dead-jobs-readonly`, target IDs hard-coded in verifiers. | pass |
 | Create branch `astack/gbrain-full-pass-readiness` | Current repo branch and pushed commits on `fork/astack/gbrain-full-pass-readiness`. | pass |
+| User decision on runtime path | `Selected Path` section records upstream-clean wait; custom runtime cut remains not approved. | pass |
 | Hunt-first diagnosis with six buckets | `Hunt-First Diagnosis` section. | pass |
 | Remote MCP bad bearer tokens return `401/403`, not `500` | `services/gbrain-remote-mcp/start-gbrain-http.mjs`, `scripts/gbrain-remote-mcp-canary.mjs`, `scripts/gbrain-remote-mcp-fixture-canary.sh`, latest full gate `remote_mcp_oauth_fixture_canary`. | pass in astack, upstream PR #620 pending |
 | Remote MCP canaries cover missing/bad/expired/revoked/read-only/admin/DCR/CORS/log-redaction | Latest full gate evidence at `2026-05-05T00:56:53Z`: all named steps PASS, fixture clients revoked. | pass |
@@ -961,7 +971,7 @@ The runtime mutation command remains intentionally absent from this section. Use
 
 ## Remaining FULL PASS Gates
 
-1. Observe 24-48h that no new dead shell jobs are created from disabled OpenClaw-agent wrapper jobs or model cooldown.
+1. Observe 24-48h that no new dead shell jobs are created from disabled OpenClaw-agent wrapper jobs or model cooldown. Latest quick gate at `2026-05-05T01:05:11Z` reports `5.0h/24h`, no new dead jobs.
 2. Land or consume upstream GBrain PR #619 so runtime doctor can move from shipped resolver warnings to `ok`.
 3. Land or consume upstream GBrain PR #620 so invalid/expired MCP bearer tokens return clean OAuth auth failures from upstream, not only from the astack wrapper.
 4. Land or consume upstream GBrain PR #626 so runtime source-scoped stale embedding is not a custom cherry-pick.
