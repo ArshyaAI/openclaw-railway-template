@@ -969,11 +969,78 @@ gbrain get "system/canaries/gbrain-claude-code-canary-2026-05-05"
 
 The runtime mutation command remains intentionally absent from this section. Use `npm run upgrade:gbrain-runtime -- --json` first; execution requires the approval phrases and rollback/canary plan described above.
 
+## 2026-05-05 Upstream and Scheduler Recheck
+
+User prompt: upstream has a new update and may have fixed the issue.
+
+Fresh upstream result:
+
+- `npm run check:gbrain-upstream -- --json`
+  - upstream `garrytan/gbrain` master: `ee9ceb327a39b0c705ee945c6cfe821de11d34ed`
+  - upstream package: `0.27.0`
+  - runtime remains `d050451df5852cc7414601e92b927469e374f75e` / `gbrain 0.26.7`
+  - docker/verifier pins remain `058fe695756ed16e43916d907af3845338430156`
+- `npm run verify:gbrain-full-pass-gates -- --skip-claude --skip-codex --skip-direct --skip-remote --json`
+  - status: `BLOCKED`
+  - PR #619, #620, and #626 remain open and mergeable, not consumed by upstream master.
+  - runtime doctor remains `warnings` because resolver health still reports 37 routing warnings.
+  - risk logs are clean for token/session/rate-limit churn.
+  - scheduler burn-in failed because a new dead shell job appeared after cutoff.
+
+Upstream PR maintenance:
+
+- Rebased and pushed the three existing upstream PR branches onto `ee9ceb327a39b0c705ee945c6cfe821de11d34ed` / `0.27.0`.
+- #619 `fix/resolver-routing-fixtures`: new head `7026ea2e851c15e9a1489b6df50c5b0d485d2c44`; verification: routing eval `58/58`, resolver doctor `ok`, targeted tests pass, typecheck pass.
+- #620 `fix/http-mcp-auth-errors`: new head `c6a3f9548d88b99eb72a2ed0787207ae98606cbe`; verification: OAuth + HTTP MCP tests pass with DB-backed tests skipped because `DATABASE_URL` is not set, typecheck pass.
+- #626 `fix/embed-stale-source-scoping`: new head `2ebb917cf703e73994e8fe9d599b9f7b49ed7994`; verification: embed serial tests pass, typecheck pass.
+
+New scheduler blocker:
+
+- `npm run verify:gbrain -- --dead-jobs-readonly`
+  - target verified: `openclaw-railway-template` / `6f333a2b-07d9-4219-8531-3b96fbc6a2f9`
+  - new dead job: `1894`, started `2026-05-05T01:17:05.573Z`
+  - command data: `["bash","/data/.openclaw/cron/bin/x-bookmarks-daily.sh"]`
+  - root cause class: X/Twitter API credits depleted, not OpenClaw model cooldown.
+- Runtime manifest shows `x-bookmarks-daily` enabled at `17 3 * * *` Europe/Zurich through `gbrain-submit-shell-job.sh`.
+- Current runtime script fails hard when `x-collector.mjs collect-bookmarks` receives `CreditsDepleted`, causing GBrain shell retries and a `DEAD` job.
+
+AstACK-owned local fix prepared:
+
+- Added `patches/astack-shell-job-runner.sh`.
+  - Preserves normal successful shell-job output.
+  - Preserves hard failures for non-quota errors.
+  - Converts known X/Twitter credits-depleted failures into `skipped_external_quota` with sanitized diagnostic tail and exit `0`, preventing noisy GBrain retries/dead jobs while keeping the quota condition visible.
+- Added `patches/gbrain-submit-shell-job.sh`.
+  - Submits shell jobs through `astack-shell-job-runner.sh` when the runner is installed.
+  - Falls back to the original direct script invocation if the runner is absent.
+- Updated `patches/start-astack.sh` to install both shell-job patches at boot.
+- Added `scripts/test-gbrain-shell-job.sh` and `npm run test:gbrain-shell-job`.
+
+Verification:
+
+```bash
+npm run test:gbrain-shell-job
+# gbrain shell job tests passed
+
+npm run test:openclaw-agent-job
+# openclaw-agent-job tests passed
+
+node --check patches/direct-minions-scheduler.mjs
+bash -n patches/start-astack.sh patches/astack-shell-job-runner.sh patches/gbrain-submit-shell-job.sh scripts/test-gbrain-shell-job.sh
+```
+
+Runtime deployment status:
+
+- Not deployed yet in this section.
+- Runtime mutation requires checkpoint approval because it will install scripts into `/data/.openclaw/cron/bin` on the approved target service and restart/redeploy only `openclaw-railway-template`.
+- Expected impact: future X/Twitter credits-depleted collector runs become recorded skips instead of GBrain `DEAD` shell jobs; real script failures still fail.
+- Rollback: redeploy previous Railway deployment for `openclaw-railway-template` or restore `/data/.openclaw/cron/bin/gbrain-submit-shell-job.sh` from its boot backup created by `start-astack.sh`.
+
 ## Remaining FULL PASS Gates
 
-1. Observe 24-48h that no new dead shell jobs are created from disabled OpenClaw-agent wrapper jobs or model cooldown. Latest quick gate at `2026-05-05T01:05:11Z` reports `5.0h/24h`, no new dead jobs.
+1. Deploy or otherwise install the astack shell-job quota guard, then restart the scheduler burn-in from the new cutoff. Latest quick gate at `2026-05-05T05:43:06Z` fails because job `1894` hit X/Twitter `CreditsDepleted`.
 2. Land or consume upstream GBrain PR #619 so runtime doctor can move from shipped resolver warnings to `ok`.
 3. Land or consume upstream GBrain PR #620 so invalid/expired MCP bearer tokens return clean OAuth auth failures from upstream, not only from the astack wrapper.
 4. Land or consume upstream GBrain PR #626 so runtime source-scoped stale embedding is not a custom cherry-pick.
-5. Upgrade/pin the approved runtime and durable astack pins against upstream `0.26.8` / `9c2dc4cd544cd8013e0eee7a6ffb8536d3c2f13a`, after deciding whether to wait for PR #619/#620/#626 upstream consumption or create an explicitly accepted custom combined runtime cut. The custom cut path now requires both approval phrases and the explicit `ArshyaAI/gbrain` fetch URL/ref before runtime mutation.
-6. Decide whether to update the local custom checkout `/Users/arshya/gbrain` from package `0.26.6` to `0.26.8`; it is intentionally preserved because it is a custom dirty branch.
+5. Upgrade/pin the approved runtime and durable astack pins against upstream `0.27.0` / `ee9ceb327a39b0c705ee945c6cfe821de11d34ed`, after deciding whether to wait for PR #619/#620/#626 upstream consumption or create an explicitly accepted custom combined runtime cut. The custom cut path still requires both approval phrases and the explicit `ArshyaAI/gbrain` fetch URL/ref before runtime mutation.
+6. Decide whether to update the local custom checkout `/Users/arshya/gbrain` from package `0.26.6` to `0.27.0`; it is intentionally preserved because it is a custom dirty branch.

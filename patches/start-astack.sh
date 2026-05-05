@@ -57,6 +57,8 @@ install_astack_direct_minions_runtime() {
   }
 
   install_one "direct-minions-scheduler.mjs" 0755
+  install_one "astack-shell-job-runner.sh" 0755
+  install_one "gbrain-submit-shell-job.sh" 0755
   install_one "openclaw-agent-job.sh" 0755
 }
 

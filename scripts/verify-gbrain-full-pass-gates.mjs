@@ -312,6 +312,9 @@ async function checkSecretScan() {
     'scripts/gbrain-codex-canary.sh',
     'scripts/gbrain-remote-mcp-canary.mjs',
     'scripts/gbrain-remote-mcp-fixture-canary.sh',
+    'scripts/test-gbrain-shell-job.sh',
+    'patches/astack-shell-job-runner.sh',
+    'patches/gbrain-submit-shell-job.sh',
     'services/gbrain-remote-mcp/start-gbrain-http.mjs',
   ];
   const patterns = [
