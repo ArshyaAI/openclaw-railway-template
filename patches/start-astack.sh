@@ -172,6 +172,52 @@ configure_openclaw_gbrain_mcp() {
   fi
 }
 
+ensure_openclaw_oauth_model_routes() {
+  local config_path="/data/.openclaw/openclaw.json"
+
+  [ -f "$config_path" ] || return 0
+
+  node - "$config_path" <<'NODE'
+const fs = require("fs");
+const configPath = process.argv[2];
+const cfg = JSON.parse(fs.readFileSync(configPath, "utf8"));
+
+function ensureObject(parent, key) {
+  if (!parent[key] || typeof parent[key] !== "object" || Array.isArray(parent[key])) {
+    parent[key] = {};
+  }
+  return parent[key];
+}
+
+cfg.agents = ensureObject(cfg, "agents");
+cfg.agents.defaults = ensureObject(cfg.agents, "defaults");
+cfg.agents.defaults.models = ensureObject(cfg.agents.defaults, "models");
+
+for (const key of Object.keys(cfg.agents.defaults.models)) {
+  if (key.startsWith("openai/gpt-")) {
+    delete cfg.agents.defaults.models[key];
+  }
+}
+
+cfg.agents.defaults.models["openai-codex/gpt-5.4"] = {
+  ...(cfg.agents.defaults.models["openai-codex/gpt-5.4"] || {}),
+  alias: "GPT",
+};
+cfg.agents.defaults.models["openai-codex/gpt-5.5"] =
+  cfg.agents.defaults.models["openai-codex/gpt-5.5"] || {};
+cfg.agents.defaults.models["google/gemini-2.5-pro"] =
+  cfg.agents.defaults.models["google/gemini-2.5-pro"] || {};
+
+cfg.agents.defaults.model = ensureObject(cfg.agents.defaults, "model");
+cfg.agents.defaults.model.primary = "openai-codex/gpt-5.5";
+cfg.agents.defaults.model.fallbacks = ["google/gemini-2.5-pro"];
+
+fs.writeFileSync(configPath, JSON.stringify(cfg, null, 2) + "\n");
+NODE
+
+  echo "[start-astack] ensured OpenClaw Codex OAuth model routing"
+}
+
 patch_alphaclaw_gbrain_boot_config() {
   local alphaclaw_bin="/app/node_modules/@chrysb/alphaclaw/bin/alphaclaw.js"
 
@@ -201,14 +247,35 @@ const patch = `
     const codexEnsureGbrainMcpBootConfig = () => {
       try {
         const cfg = JSON.parse(fs.readFileSync(configPath, "utf8"));
+        const codexEnsureObject = (parent, key) => {
+          if (!parent[key] || typeof parent[key] !== "object" || Array.isArray(parent[key])) {
+            parent[key] = {};
+          }
+          return parent[key];
+        };
         if (!cfg.mcp || typeof cfg.mcp !== "object" || Array.isArray(cfg.mcp)) cfg.mcp = {};
         if (!cfg.mcp.servers || typeof cfg.mcp.servers !== "object" || Array.isArray(cfg.mcp.servers)) cfg.mcp.servers = {};
         cfg.mcp.servers.gbrain = { command: "/data/.bun/bin/gbrain", args: ["serve"] };
+        cfg.agents = codexEnsureObject(cfg, "agents");
+        cfg.agents.defaults = codexEnsureObject(cfg.agents, "defaults");
+        cfg.agents.defaults.models = codexEnsureObject(cfg.agents.defaults, "models");
+        for (const key of Object.keys(cfg.agents.defaults.models)) {
+          if (key.startsWith("openai/gpt-")) delete cfg.agents.defaults.models[key];
+        }
+        cfg.agents.defaults.models["openai-codex/gpt-5.4"] = {
+          ...(cfg.agents.defaults.models["openai-codex/gpt-5.4"] || {}),
+          alias: "GPT",
+        };
+        cfg.agents.defaults.models["openai-codex/gpt-5.5"] = cfg.agents.defaults.models["openai-codex/gpt-5.5"] || {};
+        cfg.agents.defaults.models["google/gemini-2.5-pro"] = cfg.agents.defaults.models["google/gemini-2.5-pro"] || {};
+        cfg.agents.defaults.model = codexEnsureObject(cfg.agents.defaults, "model");
+        cfg.agents.defaults.model.primary = "openai-codex/gpt-5.5";
+        cfg.agents.defaults.model.fallbacks = ["google/gemini-2.5-pro"];
         if (cfg.plugins?.entries && Object.hasOwn(cfg.plugins.entries, "device-pair")) {
           delete cfg.plugins.entries["device-pair"];
         }
         fs.writeFileSync(configPath, JSON.stringify(cfg, null, 2) + "\\n");
-        console.log("[alphaclaw] Ensured GBrain MCP boot config");
+        console.log("[alphaclaw] Ensured GBrain MCP and Codex OAuth model boot config");
       } catch (e) {
         console.log(\`[alphaclaw] GBrain MCP boot config skipped: \${String(e.message || "").slice(0, 200)}\`);
       }
@@ -243,6 +310,7 @@ start_cron
 load_persistent_env
 start_gbrain_supervisor
 configure_openclaw_gbrain_mcp
+ensure_openclaw_oauth_model_routes
 patch_alphaclaw_gbrain_boot_config
 schedule_post_boot_openclaw_gbrain_mcp
 
