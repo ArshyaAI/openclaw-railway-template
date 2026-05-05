@@ -29,6 +29,34 @@ start_cron() {
   fi
 }
 
+start_astack_voice_watchdog() {
+  local watchdog="/data/.openclaw/cron/bin/ngrok-voice-watchdog.sh"
+  local cron_file="/data/.openclaw/cron/system/astack-voice-watchdog"
+  local live_cron_file="/etc/cron.d/astack-voice-watchdog"
+  local log_dir="/data/.openclaw/cron/direct-minions/logs"
+
+  [ -x "$watchdog" ] || return 0
+
+  mkdir -p "$(dirname "$cron_file")" "$log_dir"
+
+  if grep -q 'export GBRAIN_HOME=/data/gbrain' "$watchdog" 2>/dev/null; then
+    sed -i 's#export GBRAIN_HOME=/data/gbrain#export GBRAIN_HOME=/data#' "$watchdog"
+    echo "[start-astack] corrected voice watchdog GBRAIN_HOME"
+  fi
+
+  cat >"$cron_file" <<'CRON'
+*/5 * * * * root /data/.openclaw/cron/bin/ngrok-voice-watchdog.sh >>/data/.openclaw/cron/direct-minions/logs/ngrok-voice-watchdog.stdout.log 2>>/data/.openclaw/cron/direct-minions/logs/ngrok-voice-watchdog.stderr.log
+CRON
+  cp "$cron_file" "$live_cron_file"
+  chmod 0644 "$cron_file" "$live_cron_file"
+
+  (
+    "$watchdog" >>"$log_dir/ngrok-voice-watchdog.stdout.log" 2>>"$log_dir/ngrok-voice-watchdog.stderr.log" ||
+      echo "[start-astack] warning: voice watchdog boot run failed" >&2
+  ) &
+  echo "[start-astack] scheduled voice watchdog"
+}
+
 install_astack_direct_minions_runtime() {
   local source_dir="/app/patches"
   local target_dir="/data/.openclaw/cron/bin"
@@ -307,6 +335,7 @@ schedule_post_boot_openclaw_gbrain_mcp() {
 install_astack_direct_minions_runtime
 restore_persisted_crons
 start_cron
+start_astack_voice_watchdog
 load_persistent_env
 start_gbrain_supervisor
 configure_openclaw_gbrain_mcp
