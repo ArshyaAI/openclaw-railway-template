@@ -1232,3 +1232,4 @@ Rollback updates:
   - #620 HTTP auth: https://github.com/garrytan/gbrain/pull/620#issuecomment-4377379146
   - #626 stale embedding: https://github.com/garrytan/gbrain/pull/626#issuecomment-4377379142
 - `GBRAIN_VERIFY_SINCE=5m npm run verify:gbrain -- --railway-current` at `2026-05-05T07:39Z`: target service `openclaw-railway-template` deploy `9a87eb62-612d-4bdf-9ed7-b99c495edfdc`, status `SUCCESS`, risk log counts all `0`.
+- Practical dogfood onboarding guide added at `docs/gbrain-dogfood-quickstart.md`.
