@@ -20,9 +20,9 @@ Allowed Railway operations in this sprint are limited to the OpenClaw target ser
 | Bucket | Finding |
 | --- | --- |
 | Already working | OpenClaw target service healthy, runtime GBrain `0.26.7`, stdio MCP configured, supervisor running on the post-upgrade boot path, direct/remote/Codex GBrain canaries passed. `embed --stale --dry-run` now reports 0 stale chunks after the source-scoped embedding fix. |
-| Working but not FULL PASS | Runtime doctor remains `warnings`; scheduled shell-job health needs the new X/Twitter quota guard deployed plus a fresh 24-48h observation window; remote MCP is live-hardened but still carries an astack patch until upstream PR #620 lands; runtime GBrain carries the source-scoped stale-embed patch until upstream PR #626 is merged/consumed. |
+| Working but not FULL PASS | Runtime doctor remains `warnings`; scheduled shell-job health needs the fresh post-quota-guard 24-48h observation window; remote MCP is live-hardened but still carries an astack patch until upstream PR #620 lands; runtime GBrain carries the source-scoped stale-embed patch until upstream PR #626 is merged/consumed. |
 | Missing evidence | No local-agent evidence gap remains: Claude Code and Codex both completed real shared-GBrain toolcall canaries. |
-| Real blockers | Running direct-minions scheduler ignored `enabled:false`; this produced fresh dead shell jobs from disabled OpenClaw-agent wrapper jobs. A second blocker was found and fixed: upstream `embed --stale` grouped by slug even though slugs are unique only per `source_id`, leaving stale chunks unembedded on duplicate-slug sources. A third blocker was found on 2026-05-05: enabled `x-bookmarks-daily` can die from X/Twitter `CreditsDepleted` and create GBrain `DEAD` shell jobs unless the prepared astack shell-job quota guard is deployed. |
+| Real blockers | Running direct-minions scheduler ignored `enabled:false`; this produced fresh dead shell jobs from disabled OpenClaw-agent wrapper jobs. A second blocker was found and fixed: upstream `embed --stale` grouped by slug even though slugs are unique only per `source_id`, leaving stale chunks unembedded on duplicate-slug sources. A third blocker was found and deployed on 2026-05-05: enabled `x-bookmarks-daily` can die from X/Twitter `CreditsDepleted`; the live shell-job quota guard now converts that known external quota condition into a recorded skip instead of a GBrain `DEAD` job. |
 | Security risks | Remote MCP must return clean auth status, keep DCR disabled, keep CORS default-deny, and avoid auth material in logs. |
 | Not worth doing now | Custom MCP gateway, broad project rollback, re-enabling OpenClaw-agent scheduled wrappers without quota policy. |
 
@@ -31,7 +31,7 @@ Allowed Railway operations in this sprint are limited to the OpenClaw target ser
 | Workstream | Status | Evidence |
 | --- | --- | --- |
 | 1. Remote MCP hardening | live pass, upstream patch pending | Remote deployment `aa3baa40-a303-4bc0-890f-99a8120cbf69` runs GBrain `0.26.7` with the astack wrapper plus the upstream-aligned `InvalidTokenError` provider patch from PR #620. Full remote canary now passes and is part of `verify:gbrain-full-pass-gates`: missing token `401`, bad token `401`, expired token `401`, revoked client denial `400`, DCR disabled `404`, admin denial `404`, CORS default-deny, log redaction, read-only write denial, tools list, read/write/search/version/delete/restore, and OAuth fixture client revocation. Upstream issue: <https://github.com/garrytan/gbrain/issues/616>. Upstream fix PR: <https://github.com/garrytan/gbrain/pull/620>. |
-| 2. Scheduler/quota fix | partial live pass, new quota guard prepared | Deployment `afff717e-39e4-472b-acfd-98f9fd66c505` keeps the corrected astack-owned scheduler/wrapper and hardens GBrain supervisor boot. Runtime validate: `enabled_cron=12`, `disabled_cron=7`; scheduler startup logged `skip_disabled_startup` for all 7 disabled OpenClaw-agent wrapper jobs. A later read-only check found new job `1894` from enabled `x-bookmarks-daily`, caused by X/Twitter `CreditsDepleted`, not OpenClaw model cooldown. Commit `258eb89` adds `astack-shell-job-runner.sh` and `gbrain-submit-shell-job.sh` so known external quota depletion becomes a logged skip instead of a GBrain `DEAD` retry storm; this commit is pushed but not yet deployed. `openclaw-agent-job.sh` still defaults to `openai/gpt-5.4` if intentionally enabled and preserves failure exit codes across no-fallback, fallback-success, and fallback-fail paths. |
+| 2. Scheduler/quota fix | live pass, 24-48h monitoring pending | Deployment `9a87eb62-612d-4bdf-9ed7-b99c495edfdc` adds the external-quota shell-job guard on top of the corrected astack-owned scheduler/wrapper and hardened GBrain supervisor boot. Runtime validate: `enabled_cron=12`, `disabled_cron=7`, enabled OpenClaw-agent wrappers `0`. A read-only check had found job `1894` from enabled `x-bookmarks-daily`, caused by X/Twitter `CreditsDepleted`, not OpenClaw model cooldown. Commit `258eb89` added `astack-shell-job-runner.sh` and `gbrain-submit-shell-job.sh`; live canary job `1941` proved a fake `CreditsDepleted` shell job completed with `skipped_external_quota` instead of becoming `DEAD`. Latest gate after deploy is `BLOCKED`, not `FAIL`: `0.05h/24h`, no new dead jobs after cutoff. `openclaw-agent-job.sh` still defaults to `openai/gpt-5.4` if intentionally enabled and preserves failure exit codes across no-fallback, fallback-success, and fallback-fail paths. |
 | 3. Claude Code canary | pass | After the 2am Europe/Zurich quota reset, `npm run canary:gbrain-claude` passed with real GBrain MCP operations: get_page, put_page, search, delete_page, include_deleted get_page, restore_page, and final get_page. Latest full gate evidence slug: `system/canaries/gbrain-claude-code-canary-2026-05-05`. |
 | 4. Doctor warnings/upstream route | frontmatter fixed, resolver upstream PR open, stale-embed patch live | Runtime frontmatter audit is now clean: `ok=true,total=0` after the targeted runtime source fix. Runtime `embed --stale` is also clean after cherry-picking PR #626 into `/data/gbrain`: dry-run now reports `Would embed 0 chunks`. Runtime doctor still warns on 37 shipped skill routing misses on GBrain `0.26.7`. Upstream resolver issue: <https://github.com/garrytan/gbrain/issues/617>. Resolver fix PR: <https://github.com/garrytan/gbrain/pull/619>. Stale-embed fix PR: <https://github.com/garrytan/gbrain/pull/626>. |
 | 5. Update flow automation | currentness blocked by new upstream | `npm run check:gbrain-upstream -- --json` now sees upstream `ee9ceb327a39b0c705ee945c6cfe821de11d34ed` / `0.27.0`. Runtime remains `d050451df5852cc7414601e92b927469e374f75e` / `0.26.7` with PR #626 cherry-picked; Docker/verifier pins remain `058fe695...`. The guarded upgrade plan reports runtime version, target package version, current upstream migrations, and migration v35 RLS impact. A prior read-only v35 audit on the target DB found `non_exempt_public_tables_without_rls=0`, so the RLS backfill would not currently flip any existing non-exempt public table. Runtime was not upgraded in this pass because pure upstream `0.27.0` would drop the live #626 patch unless upstream consumes the PRs or a custom combined runtime cut is explicitly accepted. The custom combined cut path remains explicitly double-gated and requires `GBRAIN_RUNTIME_CUSTOM_CUT_APPROVED=openclaw-gbrain-custom-runtime-cut` plus an explicit fork fetch URL/ref. |
@@ -43,7 +43,7 @@ Decision at `2026-05-05T01:05:11Z`: use the upstream-clean wait path, not the cu
 
 - Custom runtime cut remains not approved. Do not execute a custom GBrain runtime checkout unless this decision is explicitly reversed with `openclaw-gbrain-custom-runtime-cut`.
 - Wait for upstream PR #619, #620, and #626 to be merged or otherwise consumed, then update/pin the OpenClaw runtime and durable astack pins against upstream.
-- Deploy or install the prepared astack shell-job quota guard before restarting scheduler burn-in. The previous burn-in window was invalidated by job `1894` at `2026-05-05T01:17:05Z`.
+- Scheduler burn-in restarted after deploying the astack shell-job quota guard. The previous burn-in window was invalidated by job `1894` at `2026-05-05T01:17:05Z`; the new cutoff is `2026-05-05T05:55:53Z`.
 - Latest quick gate after this decision remains `BLOCKED`: PRs open/mergeable, runtime `0.26.7` versus upstream `0.27.0`, doctor `resolver_health` warnings, scheduler burn-in failed on job `1894`, no current token/session/rate-limit logs, secret scan pass.
 
 ## Completion Audit Snapshot
@@ -58,7 +58,7 @@ Checked at `2026-05-05T00:56:53Z`. Result: `NOT_FULL_PASS`.
 | Upstream GBrain owns core resolver/auth/embedding behavior | PR #619, PR #620, and PR #626 are open and mergeable, not merged/consumed. Non-merged PR states are now hard `BLOCKED`, not warnings. | blocked |
 | Direct GBrain live canary covers read/write/search/query/graph/timeline/raw/chunks/jobs/embed/delete/restore/health | After PR #626 was cherry-picked into runtime as `d050451`, stale embed job `1861` embedded 14 chunks. The direct canary now also submits a global stale-embed job before final health; latest full gate passed with `chunk_count=36097`, `embedded_count=36097`, `embed_coverage=1`, `missing_embeddings=0`, `brain_score=85`. | pass with upstream concern |
 | Scheduler no longer creates OpenClaw agent-wrapper sessions for migrated jobs | Runtime validate reports `enabled_agent_wrapper_count=0`; disabled wrapper jobs remain disabled. | pass |
-| Scheduler quota/cooldown fix has enough burn-in | Latest gate fails because job `1894` appeared after cutoff from X/Twitter `CreditsDepleted`. Commit `258eb89` prepares the external-quota skip guard, but runtime deployment and a fresh burn-in are still pending. | blocked |
+| Scheduler quota/cooldown fix has enough burn-in | Deployment `9a87eb62...` is live and canary job `1941` proved external quota skip behavior. Latest gate reports `0.05h/24h`, no new dead jobs after cutoff. | blocked |
 | Claude Code accesses the shared GBrain with a real tool call | Full gate passed `claude_code_shared_gbrain_canary`: get_page, put_page, search, delete_page, get_page include_deleted, restore_page, final get_page, plus independent final-state verification through direct GBrain `get_page`. | pass |
 | Codex accesses the shared GBrain with real tool calls | The full-pass gate passed `codex_shared_gbrain_canary`: health, search, put/get, delete, and restore against the shared GBrain MCP, plus independent final-state verification through direct GBrain `get_page`. Both Codex phases now use an explicit isolated GBrain MCP config. | pass |
 | Runtime GBrain doctor is `ok` | Runtime `gbrain frontmatter audit --json` is clean (`ok=true,total=0`). Runtime `gbrain doctor --json` now reports `health_score=95`; the only remaining doctor warning is `resolver_health` with 37 shipped routing warnings. | blocked |
@@ -83,7 +83,7 @@ Conclusion: AStack has a working and useful dogfood layer, including live Remote
 | Upstream GBrain issue/PR opened for auth behavior | Issue #616 and PR #620. | pass, not merged |
 | Scheduler respects disabled migrated OpenClaw-agent jobs | `patches/direct-minions-scheduler.mjs`, `patches/start-astack.sh`, runtime validate `enabled_agent_wrapper_count=0`. | pass |
 | Scheduler shell-job fallback/skip/backoff path exists | `patches/openclaw-agent-job.sh`, `scripts/test-openclaw-agent-job.sh`, `npm run test:openclaw-agent-job`. | pass |
-| Scheduler done means 24-48h no new dead jobs | Gate currently fails on job `1894` after cutoff. Commit `258eb89` prepares the X/Twitter external-quota guard; runtime deployment and fresh burn-in are pending. | blocked |
+| Scheduler done means 24-48h no new dead jobs | Gate currently reports no new dead jobs after new cutoff `2026-05-05T05:55:53Z`, but only `0.05h/24h` burn-in has elapsed. | blocked |
 | Claude Code uses shared live GBrain with real toolcalls | `scripts/gbrain-claude-code-canary.sh`, latest full gate `claude_code_shared_gbrain_canary` PASS with get/search/write/delete/restore and direct final-state verification. | pass |
 | Codex uses shared live GBrain with real toolcalls | `scripts/gbrain-codex-canary.sh`, latest full gate `codex_shared_gbrain_canary` PASS with health/search/write/read/delete/restore and direct final-state verification. | pass |
 | Resolver doctor warnings investigated and routed upstream | Issue #617 and PR #619; runtime doctor gate still warns until consumed. | blocked |
@@ -1037,14 +1037,31 @@ bash -n patches/start-astack.sh patches/astack-shell-job-runner.sh patches/gbrai
 
 Runtime deployment status:
 
-- Not deployed yet in this section.
-- Runtime mutation requires checkpoint approval because it will install scripts into `/data/.openclaw/cron/bin` on the approved target service and restart/redeploy only `openclaw-railway-template`.
+- Deployed after explicit approval phrase: `deploy den shell-job quota guard`.
+- Command: `railway up --project fbdb217b-060f-4f1e-8697-08a6288a19c4 --environment production --service 6f333a2b-07d9-4219-8531-3b96fbc6a2f9 --detach --message "deploy astack shell-job quota guard"`.
+- Deployment: `9a87eb62-612d-4bdf-9ed7-b99c495edfdc`, status `SUCCESS`, created `2026-05-05T05:54:32.480Z`.
+- Pre-deploy target check: service `openclaw-railway-template` deployment `afff717e-39e4-472b-acfd-98f9fd66c505` was `SUCCESS`; current token/session/rate-limit risk logs were `0`; local shell-job and OpenClaw-agent job tests passed.
+- Live install proof:
+  - `/data/.openclaw/cron/bin/astack-shell-job-runner.sh` installed at `2026-05-05T05:55`, executable.
+  - `/data/.openclaw/cron/bin/gbrain-submit-shell-job.sh` installed at `2026-05-05T05:55`, executable.
+  - Runner contains `skipped_external_quota` / `x_api_credits_depleted`.
+  - Submit wrapper routes shell jobs through `astack-shell-job-runner.sh`.
+  - Scheduler validates `enabled_cron=12`, `disabled_cron=7`, enabled OpenClaw-agent wrappers `0`.
+- Runtime current risk logs after deploy: deployment `9a87eb62-612d-4bdf-9ed7-b99c495edfdc` `SUCCESS`, total lines `56`, token mismatch `0`, sessions/store `0`, rate-limit `0`.
+- End-to-end quota-guard canary:
+  - Submitted fake shell job `1941` through live `gbrain-submit-shell-job.sh`.
+  - Job data used argv `["bash","/data/.openclaw/cron/bin/astack-shell-job-runner.sh","/tmp/astack-quota-guard-canary.sh"]`.
+  - Job completed, not dead: started `2026-05-05T05:58:46.003Z`, finished `2026-05-05T05:58:46.180Z`.
+  - Result stderr included `event:"skipped_external_quota"`, `class:"x_api_credits_depleted"`, `original_exit:1`.
+- Gate after deploy:
+  - `GBRAIN_FULL_PASS_DEAD_JOB_CUTOFF=2026-05-05T05:55:53Z npm run verify:gbrain-full-pass-gates -- --skip-claude --skip-codex --skip-direct --skip-remote --json`
+  - status `BLOCKED`, not `FAIL`; scheduler burn-in `0.05h/24h`, no new dead jobs after cutoff.
 - Expected impact: future X/Twitter credits-depleted collector runs become recorded skips instead of GBrain `DEAD` shell jobs; real script failures still fail.
-- Rollback: redeploy previous Railway deployment for `openclaw-railway-template` or restore `/data/.openclaw/cron/bin/gbrain-submit-shell-job.sh` from its boot backup created by `start-astack.sh`.
+- Rollback: redeploy previous Railway deployment `afff717e-39e4-472b-acfd-98f9fd66c505` for `openclaw-railway-template`, or restore `/data/.openclaw/cron/bin/gbrain-submit-shell-job.sh` and `/data/.openclaw/cron/bin/astack-shell-job-runner.sh` from boot backups created by `start-astack.sh`.
 
 ## Remaining FULL PASS Gates
 
-1. Deploy or otherwise install the astack shell-job quota guard, then restart the scheduler burn-in from the new cutoff. Latest quick gate at `2026-05-05T05:43:06Z` fails because job `1894` hit X/Twitter `CreditsDepleted`.
+1. Complete 24-48h scheduler burn-in from cutoff `2026-05-05T05:55:53Z`. Latest gate at `2026-05-05T05:59:05Z` reports `0.05h/24h` complete and no new dead jobs after cutoff.
 2. Land or consume upstream GBrain PR #619 so runtime doctor can move from shipped resolver warnings to `ok`.
 3. Land or consume upstream GBrain PR #620 so invalid/expired MCP bearer tokens return clean OAuth auth failures from upstream, not only from the astack wrapper.
 4. Land or consume upstream GBrain PR #626 so runtime source-scoped stale embedding is not a custom cherry-pick.
