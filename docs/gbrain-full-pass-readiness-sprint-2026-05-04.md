@@ -1,8 +1,20 @@
 # GBrain Full-Pass Readiness Sprint - 2026-05-04
 
-Status: `PASS_WITH_CONCERNS` (`FULL_PASS_BLOCKED`)
+Status: `DOGFOOD_READY_CUSTOM_CUT` (`FULL_PASS_BLOCKED_UPSTREAM_CLEAN`)
 
 This is the astack-owned follow-up sprint for the remaining GBrain full-pass blockers. It continues from `docs/gbrain-resume-readiness-2026-05-04.md` and does not reset the earlier evidence.
+
+Current snapshot at `2026-05-05T07:15Z`:
+
+- User explicitly approved breaking the upstream-clean gates to get the full feature set dogfoodable ASAP.
+- OpenClaw target runtime GBrain is now `gbrain 0.27.0` at custom cut `de11d4c858b1a880931c008fbee3ceef92a8329a`.
+- The custom cut is based on upstream `0.27.0` / `ee9ceb327a39b0c705ee945c6cfe821de11d34ed` plus pending PRs #619, #620, and #626.
+- Runtime full doctor is healthy: `status=healthy`, `health_score=100`, schema version `36`, auto-RLS event trigger installed, embeddings `100%`, resolver `39 skills, all reachable`.
+- Remote MCP service `gbrain-remote-mcp` is also on `gbrain 0.27.0` at the same custom cut, deployment `b57e27c0-351e-4db1-9c0e-914922c1769d`, safety patch verified.
+- Local agent binary `/Users/arshya/.bun/bin/gbrain` is now `gbrain 0.27.0`; dirty local source checkout `/Users/arshya/gbrain` remains preserved.
+- OpenClaw target agent model is now `anthropic/claude-sonnet-4-5` with fallback `google/gemini-2.5-pro`, because live probes showed `openai-codex/gpt-5.5` auth-invalid and `openai/gpt-5.4` quota-exceeded.
+- Direct GBrain, Remote MCP/OAuth, Codex, and Claude Code canaries all pass against the shared live brain.
+- Strict FULL PASS remains blocked only by upstream-clean governance/currentness and scheduler burn-in, not by live feature usability.
 
 ## Scope
 
@@ -41,10 +53,17 @@ Allowed Railway operations in this sprint are limited to the OpenClaw target ser
 
 Decision at `2026-05-05T01:05:11Z`: use the upstream-clean wait path, not the custom runtime cut.
 
-- Custom runtime cut remains not approved. Do not execute a custom GBrain runtime checkout unless this decision is explicitly reversed with `openclaw-gbrain-custom-runtime-cut`.
+Decision reversal at `2026-05-05T06:50Z`: user approved the custom combined runtime cut for ASAP dogfooding and explicitly accepted breaking the upstream-clean gates. This changes the operating status to `DOGFOOD_READY_CUSTOM_CUT`, not upstream-clean `FULL PASS`.
+
+- Custom runtime cut executed and verified:
+  - Branch: `https://github.com/ArshyaAI/gbrain/tree/astack/full-pass-candidate-0.27.0`
+  - SHA: `de11d4c858b1a880931c008fbee3ceef92a8329a`
+  - Base upstream: `ee9ceb327a39b0c705ee945c6cfe821de11d34ed`
+  - Includes PR heads #619 `7026ea2e851c15e9a1489b6df50c5b0d485d2c44`, #620 `c6a3f9548d88b99eb72a2ed0787207ae98606cbe`, #626 `2ebb917cf703e73994e8fe9d599b9f7b49ed7994`.
+  - Local candidate verification before live mutation: targeted tests `168 pass`, `28 skip`, `0 fail`; `bun run typecheck` passed.
 - Wait for upstream PR #619, #620, and #626 to be merged or otherwise consumed, then update/pin the OpenClaw runtime and durable astack pins against upstream.
 - Scheduler burn-in restarted after deploying the astack shell-job quota guard. The previous burn-in window was invalidated by job `1894` at `2026-05-05T01:17:05Z`; the new cutoff is `2026-05-05T05:55:53Z`.
-- Latest quick gate after this decision remains `BLOCKED`: PRs #619/#620/#626 are open/mergeable, upstream repo permission is `READ`, runtime `0.26.7` versus upstream `0.27.0`, doctor `resolver_health` warnings, scheduler burn-in has not reached 24h, no current token/session/rate-limit logs, secret scan pass.
+- Latest strict gate after this decision remains `BLOCKED`: PRs #619/#620/#626 are open/mergeable, upstream repo permission is `READ`, runtime SHA is custom rather than upstream master, and scheduler burn-in has not reached 24h. Runtime doctor, logs, shell quota guard, and secret scan pass.
 
 Merge-gap assessment at `2026-05-05T06:14Z`:
 
@@ -1078,11 +1097,128 @@ Runtime deployment status:
 - Expected impact: future X/Twitter credits-depleted collector runs become recorded skips instead of GBrain `DEAD` shell jobs; real script failures still fail.
 - Rollback: redeploy previous Railway deployment `afff717e-39e4-472b-acfd-98f9fd66c505` for `openclaw-railway-template`, or restore `/data/.openclaw/cron/bin/gbrain-submit-shell-job.sh` and `/data/.openclaw/cron/bin/astack-shell-job-runner.sh` from boot backups created by `start-astack.sh`.
 
+## 2026-05-05 Custom Dogfood Cut Execution
+
+Approval:
+
+- User approval: break the upstream-clean gates to start dogfooding the full feature set ASAP.
+- Status semantics: this is `DOGFOOD_READY_CUSTOM_CUT`, not upstream-clean `FULL PASS`.
+
+Custom candidate:
+
+- Fork branch: `https://github.com/ArshyaAI/gbrain/tree/astack/full-pass-candidate-0.27.0`
+- Candidate SHA: `de11d4c858b1a880931c008fbee3ceef92a8329a`
+- Package version: `0.27.0`
+- Base upstream SHA: `ee9ceb327a39b0c705ee945c6cfe821de11d34ed`
+- Included pending PRs:
+  - #619 resolver routing fixtures
+  - #620 HTTP MCP auth failures
+  - #626 source-scoped stale embedding
+- Candidate verification:
+  - `HOME=$(mktemp -d /tmp/gbrain-test-home.XXXXXX) bun test test/check-resolvable.test.ts test/check-resolvable-cli.test.ts test/doctor.test.ts test/routing-eval.test.ts test/routing-eval-cli.test.ts test/oauth.test.ts test/e2e/serve-http-oauth.test.ts test/embed.serial.test.ts --timeout 30000`
+  - Result: `168 pass`, `28 skip`, `0 fail`; HTTP OAuth E2E skipped because `DATABASE_URL` was not set.
+  - `bun run typecheck`: pass.
+
+Local candidate incident:
+
+- First local `bun install --frozen-lockfile` in the candidate worktree ran upstream `postinstall`, which invoked global `gbrain apply-migrations` and `gbrain extract links --source db` against the active local/shared config.
+- The process tree was stopped immediately; no secrets were printed. Treat this as an operational incident and keep future install/upgrade paths on `--ignore-scripts` unless explicitly migrating.
+- Repo mitigation: `scripts/gbrain-runtime-upgrade-gate.mjs` now uses `bun install --frozen-lockfile --ignore-scripts` for runtime upgrade and rollback installs; Remote MCP Dockerfile also uses `--ignore-scripts`.
+
+OpenClaw target runtime upgrade:
+
+- Target service: `openclaw-railway-template` / `6f333a2b-07d9-4219-8531-3b96fbc6a2f9`
+- Approval-gated command used both required phrases:
+  - `GBRAIN_RUNTIME_UPGRADE_APPROVED=openclaw-gbrain-runtime-upgrade`
+  - `GBRAIN_RUNTIME_CUSTOM_CUT_APPROVED=openclaw-gbrain-custom-runtime-cut`
+  - `GBRAIN_RUNTIME_UPGRADE_FETCH_URL=https://github.com/ArshyaAI/gbrain.git`
+  - `GBRAIN_RUNTIME_UPGRADE_REF=astack/full-pass-candidate-0.27.0`
+  - `GBRAIN_RUNTIME_UPGRADE_SHA=de11d4c858b1a880931c008fbee3ceef92a8329a`
+- Backup directory: `/data/backups/gbrain-runtime-upgrade/2026-05-05T06-52-28-309Z`
+- The guarded upgrade command initially failed during migration with `column "provider_id" does not exist` after checkout/install/version change.
+- Fix-forward performed:
+  - Added missing v36 columns to `subagent_messages` and `subagent_tool_executions`: `schema_version`, `provider_id`.
+  - Created `idx_subagent_messages_provider`.
+  - Ran `gbrain init --migrate-only --json`, which successfully applied schema migration `36`.
+  - Manually installed v35 auto-RLS event trigger because the doctor hint pointed at `gbrain apply-migrations --force-retry 35`, but that command targets orchestrator migrations, not schema migration 35.
+- Final runtime evidence:
+  - `git rev-parse HEAD`: `de11d4c858b1a880931c008fbee3ceef92a8329a`
+  - `gbrain --version`: `gbrain 0.27.0`
+  - `gbrain doctor --json`: `status=healthy`, `health_score=100`, no warning checks
+  - `gbrain jobs supervisor status --json`: running, supervisor PID `8096`, `crashes_24h=1`, max crashes not exceeded
+
+Remote MCP custom-cut deployment:
+
+- Target service: `gbrain-remote-mcp` / `beab847a-12bb-499e-a44c-bf5d1982924f`
+- Durable code changes:
+  - `services/gbrain-remote-mcp/Dockerfile` now clones `https://github.com/ArshyaAI/gbrain.git` at `de11d4c858b1a880931c008fbee3ceef92a8329a`.
+  - Docker build uses `bun install --frozen-lockfile --ignore-scripts`.
+  - Safety patch supports both older upstream and the new custom-cut HTTP MCP route shape.
+  - Startup guard is idempotent for pre-patched images.
+- First Remote MCP custom deploy `4263c99e-232d-4949-a3ca-11aa021ab7b1` crashed because startup tried to re-apply the already-applied safety patch and could not find the original CORS anchor.
+- Fixed and redeployed `b57e27c0-351e-4db1-9c0e-914922c1769d`, status `SUCCESS`.
+- Remote live evidence:
+  - `/app` SHA: `de11d4c858b1a880931c008fbee3ceef92a8329a`
+  - Version: `gbrain 0.27.0`
+  - Safety patch: `ok`
+  - `npm run canary:gbrain-remote-fixture`: `PASS`, exposed tools `38`, missing/bad/expired bearer tokens `401`, revoked client denial `400`, DCR disabled `404`, admin denial `404`, CORS default-deny, log redaction, read-only write denial, read/write/search/version/delete/restore, fixture clients revoked.
+
+Local agent setup:
+
+- Global local binary updated with `bun install -g github:ArshyaAI/gbrain#de11d4c858b1a880931c008fbee3ceef92a8329a --ignore-scripts`.
+- `/Users/arshya/.bun/bin/gbrain --version`: `gbrain 0.27.0`
+- `/Users/arshya/gbrain` source checkout remains untouched and dirty on `codex-gbrain-0.26.6-runtime-patches`; do not reset it without separate approval.
+- Local doctor from non-GBrain repo still warns `Could not find skills directory` and supervisor not running, but DB/schema/embedding checks pass when full doctor is run. The shared-agent path is verified by canaries below.
+
+Final custom-cut canaries:
+
+- `npm run canary:gbrain`: `PASS`
+  - Covers put/get/tag/search/query/versions/delete/restore, links/backlinks/graph, timeline, raw data, chunks, jobs, explicit embed job, global stale embed job, stats, and health.
+  - Health evidence: `page_count=13975`, `chunk_count=36097`, `embedded_count=36097`, `missing_embeddings=0`, `embed_coverage=1`, `brain_score=85`.
+- `npm run canary:gbrain-remote-fixture`: `PASS`
+  - Remote MCP/OAuth end-to-end as listed above.
+- `npm run canary:gbrain-codex`: `PASS`
+  - Health/search/write/read/delete/restore; final state verified by direct `gbrain get_page`.
+- `npm run canary:gbrain-claude`: `PASS`
+  - `get_page`, `put_page`, `search`, `delete_page`, `get_page_include_deleted`, `restore_page`, `get_page_restored`; final state verified by direct `gbrain get_page`.
+- OpenClaw-mediated primary-agent canary: `PASS`
+  - Runtime config initially still used `openai-codex/gpt-5.5` as primary. A canary failed because `openai-codex/gpt-5.5` returned auth-invalid and `openai/gpt-5.4` returned quota-exceeded.
+  - Runtime config was changed to primary `anthropic/claude-sonnet-4-5` with fallback `google/gemini-2.5-pro`.
+  - Follow-up canary succeeded through OpenClaw itself using `gbrain__put_page`, `gbrain__get_page`, and `gbrain__search`.
+  - Evidence: `status=ok`, model `anthropic/claude-sonnet-4-5`, slug `system/canaries/gbrain-openclaw-primary-canary-2026-05-05`, `sentinel_present=true`, tool failures `0`.
+- `npm run verify:gbrain-full-pass-gates -- --skip-claude --skip-codex --skip-direct --skip-remote --json` at `2026-05-05T07:36:16Z`: `BLOCKED`
+  - PASS: runtime doctor, runtime shell quota guard, secret scan.
+  - BLOCKED: PR #619/#620/#626 still open, custom runtime currentness versus upstream master, 30-minute risk logs still include intentionally induced OpenAI auth/quota probe failures, scheduler burn-in `1.7h/24h` with no new dead jobs so far.
+  - Note: 30-minute risk-log checks temporarily show the intentionally induced OpenAI auth/quota failures from the model-fallback probe. That is not a GBrain failure; the runtime primary model was changed afterward and the OpenClaw-mediated canary passed.
+  - Follow-up `GBRAIN_VERIFY_SINCE=2m npm run verify:gbrain -- --railway-current` after switching primary model reports token mismatch `0`, sessions/store `0`, rate-limit `0`.
+
+Oracle Pro final gate:
+
+- Run: `oracle-pro review --risk release --intent release_gate --slug gbrain-dogfood-custom-cut-final-20260505 --run`.
+- Result artifact: `/Users/arshya/.oracle/reviews/openclaw-railway-template/openclaw-railway-template-astack-gbrain-full-pass-readiness-20260505T072921Z-74911/advisor-result.json`
+- Recommendation: evidence supports `DOGFOOD_READY_CUSTOM_CUT` for controlled daily dogfooding, not `FULL PASS`.
+- Blockers: `0`
+- Non-blockers: upstream PRs still open/unconsumed, custom runtime currentness, incomplete scheduler burn-in, astack-applied Remote MCP hardening until upstream consumption, upgrade-gate rollback hardening, stale doc sections, and transient log-scan limits.
+- Security interpretation: no packet-level security or operational blocker should prevent controlled daily dogfooding now, provided the status remains clearly labeled custom/non-upstream-clean and monitoring/canaries remain active.
+
+Rollback updates:
+
+- OpenClaw runtime rollback for this custom cut:
+  - Use backup directory `/data/backups/gbrain-runtime-upgrade/2026-05-05T06-52-28-309Z`.
+  - Recorded previous runtime SHA before this cut: `d050451df5852cc7414601e92b927469e374f75e`.
+  - Roll back only if doctor/canaries regress; current custom cut is healthier than previous runtime.
+- Remote MCP rollback for this custom cut:
+  - Roll service `gbrain-remote-mcp` from `b57e27c0-351e-4db1-9c0e-914922c1769d` back to previous successful `aa3baa40-a303-4bc0-890f-99a8120cbf69`.
+  - This reverts Remote MCP from `0.27.0` custom cut to `0.26.7`; use only if the Remote MCP canary regresses.
+- OpenClaw model rollback:
+  - Previous unstable default was `openai-codex/gpt-5.5` with no reliable fallback; keep it off primary until the OpenAI Codex OAuth profile is repaired and canaried.
+  - Current stable dogfood setting: `openclaw models set anthropic/claude-sonnet-4-5` and `openclaw models fallbacks add google/gemini-2.5-pro`.
+
 ## Remaining FULL PASS Gates
 
-1. Complete 24-48h scheduler burn-in from cutoff `2026-05-05T05:55:53Z`. Latest gate at `2026-05-05T06:09:05Z` reports `0.22h/24h` complete and no new dead jobs after cutoff.
-2. Land or consume upstream GBrain PR #619 so runtime doctor can move from shipped resolver warnings to `ok`.
-3. Land or consume upstream GBrain PR #620 so invalid/expired MCP bearer tokens return clean OAuth auth failures from upstream, not only from the astack wrapper.
-4. Land or consume upstream GBrain PR #626 so runtime source-scoped stale embedding is not a custom cherry-pick. Current GitHub permission on `garrytan/gbrain` is `READ`; AStack cannot merge these PRs directly from this account.
-5. Upgrade/pin the approved runtime and durable astack pins against upstream `0.27.0` / `ee9ceb327a39b0c705ee945c6cfe821de11d34ed`, after deciding whether to wait for PR #619/#620/#626 upstream consumption or create an explicitly accepted custom combined runtime cut. The custom cut path still requires both approval phrases and the explicit `ArshyaAI/gbrain` fetch URL/ref before runtime mutation.
-6. Decide whether to update the local custom checkout `/Users/arshya/gbrain` from package `0.26.6` to `0.27.0`; it is intentionally preserved because it is a custom dirty branch.
+1. Complete 24-48h scheduler burn-in from cutoff `2026-05-05T05:55:53Z`. Latest strict gate at `2026-05-05T07:36:16Z` reports `1.7h/24h` complete and no new dead jobs after cutoff.
+2. Land or consume upstream GBrain PR #619 so resolver health is upstream-owned, not custom-cut-owned.
+3. Land or consume upstream GBrain PR #620 so invalid/expired MCP bearer tokens return clean OAuth auth failures from upstream, not only from the astack Remote MCP wrapper/custom cut.
+4. Land or consume upstream GBrain PR #626 so source-scoped stale embedding is not a custom cherry-pick. Current GitHub permission on `garrytan/gbrain` is `READ`; AStack cannot merge these PRs directly from this account.
+5. Move from custom cut `de11d4c858b1a880931c008fbee3ceef92a8329a` back to an upstream-clean SHA after PRs #619/#620/#626 land or are otherwise consumed by `garrytan/gbrain`.
+6. Decide separately whether to clean/update the local source checkout `/Users/arshya/gbrain`; the global local binary is already `0.27.0`, but that checkout remains dirty/ahead and was intentionally preserved.

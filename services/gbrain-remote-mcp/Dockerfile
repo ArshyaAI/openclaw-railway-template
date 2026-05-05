@@ -1,6 +1,7 @@
 FROM oven/bun:1.3.13
 
-ARG GBRAIN_UPSTREAM_SHA=058fe695756ed16e43916d907af3845338430156
+ARG GBRAIN_REPO_URL=https://github.com/ArshyaAI/gbrain.git
+ARG GBRAIN_UPSTREAM_SHA=de11d4c858b1a880931c008fbee3ceef92a8329a
 
 WORKDIR /app
 
@@ -8,7 +9,7 @@ RUN apt-get update \
   && apt-get install -y --no-install-recommends git ca-certificates patch \
   && rm -rf /var/lib/apt/lists/*
 
-RUN git clone https://github.com/garrytan/gbrain.git /app \
+RUN git clone "$GBRAIN_REPO_URL" /app \
   && git checkout "$GBRAIN_UPSTREAM_SHA"
 
 COPY apply-remote-http-safety.mjs /tmp/apply-remote-http-safety.mjs
@@ -17,7 +18,7 @@ RUN grep -q "Admin Token: suppressed in Railway logs" /app/src/commands/serve-ht
   && grep -q "origin: false" /app/src/commands/serve-http.ts \
   && grep -q "InvalidTokenError" /app/src/core/oauth-provider.ts
 
-RUN bun install --frozen-lockfile
+RUN bun install --frozen-lockfile --ignore-scripts
 
 COPY start-gbrain-http.mjs /usr/local/bin/start-gbrain-http.mjs
 

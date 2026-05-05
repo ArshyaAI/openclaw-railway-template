@@ -20,6 +20,7 @@ const warnings = [];
 
 const remoteSha = run(['git', ['ls-remote', 'https://github.com/garrytan/gbrain.git', 'refs/heads/master']])
   ?.split(/\s+/)[0] || null;
+const pinnedDockerRepo = readRegex('services/gbrain-remote-mcp/Dockerfile', /ARG GBRAIN_REPO_URL=([^\n]+)/);
 const pinnedDockerSha = readRegex('services/gbrain-remote-mcp/Dockerfile', /ARG GBRAIN_UPSTREAM_SHA=([0-9a-f]{40})/);
 const pinnedVerifierSha = readRegex('scripts/verify-gbrain-openclaw-readiness.sh', /UPSTREAM_GBRAIN_SHA="([0-9a-f]{40})"/);
 const localHead = run(['git', ['-C', localCheckout, 'rev-parse', 'HEAD']]);
@@ -27,16 +28,20 @@ const localOrigin = run(['git', ['-C', localCheckout, 'rev-parse', 'origin/maste
 const localBranch = run(['git', ['-C', localCheckout, 'branch', '--show-current']]);
 const localStatus = run(['git', ['-C', localCheckout, 'status', '--porcelain']]);
 const localPackageVersion = readJsonPackage(path.join(localCheckout, 'package.json'));
+const localBinary = run(['bash', ['-lc', 'command -v gbrain || true']]);
+const localBinaryVersion = localBinary ? run([localBinary, ['--version']]) : null;
 const upstreamPackageVersion = remoteSha ? await readGitHubPackageVersion(remoteSha) : null;
 const npmPackageVersion = run(['npm', ['view', 'gbrain', 'version', '--json']]);
 const runtime = includeRuntime ? readRuntime() : null;
 
 compare('docker_pin_vs_upstream', pinnedDockerSha, remoteSha);
 compare('verifier_pin_vs_upstream', pinnedVerifierSha, remoteSha);
+if (runtime?.sha) compare('docker_pin_vs_runtime', pinnedDockerSha, runtime.sha);
 compare('local_origin_vs_upstream', localOrigin, remoteSha);
 if (runtime?.sha) compare('runtime_sha_vs_upstream', runtime.sha, remoteSha);
 if (runtime?.version && upstreamPackageVersion) compare('runtime_version_vs_upstream_package', normalizeVersion(runtime.version), upstreamPackageVersion);
 if (localPackageVersion && upstreamPackageVersion) compare('local_package_vs_upstream_package', localPackageVersion, upstreamPackageVersion);
+if (localBinaryVersion && upstreamPackageVersion) compare('local_binary_vs_upstream_package', normalizeVersion(localBinaryVersion), upstreamPackageVersion);
 compareClean('local_worktree_clean', localStatus);
 
 const result = {
@@ -51,8 +56,17 @@ const result = {
     npm_package_note: 'advisory only; GitHub source SHA/package.json remain authoritative for garrytan/gbrain',
   },
   pins: {
+    docker_repo: pinnedDockerRepo,
     docker_arg: pinnedDockerSha,
     verifier: pinnedVerifierSha,
+  },
+  custom_runtime_cut: {
+    active: Boolean(runtime?.sha && remoteSha && runtime.sha !== remoteSha),
+    runtime_sha: runtime?.sha || null,
+    docker_repo: pinnedDockerRepo,
+    docker_arg: pinnedDockerSha,
+    upstream_sha: remoteSha,
+    note: 'Custom cut is dogfood-approved but remains a FULL PASS blocker until upstream PRs are merged and consumed.',
   },
   local: {
     checkout: localCheckout,
@@ -62,6 +76,8 @@ const result = {
     dirty: Boolean(localStatus),
     dirty_files: localStatus ? localStatus.split(/\r?\n/).filter(Boolean).slice(0, 20) : [],
     package_version: localPackageVersion,
+    binary: localBinary,
+    binary_version: localBinaryVersion,
   },
   runtime,
   evidence,

@@ -4,6 +4,14 @@ Small Railway service wrapper for upstream GBrain HTTP MCP/OAuth.
 
 It intentionally keeps the main OpenClaw service unchanged. OpenClaw continues to use stdio GBrain, while local or external agents can use the remote `/mcp` endpoint with OAuth or bearer credentials.
 
+Current dogfood cut:
+
+- Repo: `https://github.com/ArshyaAI/gbrain.git`
+- SHA: `de11d4c858b1a880931c008fbee3ceef92a8329a`
+- Version: `0.27.0`
+- Reason: combines upstream `0.27.0` with pending upstream PRs #619, #620, and #626 for resolver, HTTP auth, and source-scoped stale embedding fixes.
+- This is intentionally not an upstream-clean FULL PASS until those PRs are merged and consumed from `garrytan/gbrain`.
+
 Security defaults:
 
 - `GBRAIN_ENABLE_DCR` defaults off.

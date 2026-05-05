@@ -65,8 +65,6 @@ function ensureRemoteHttpSafetyPatch() {
     source.includes('Admin Token: suppressed in Railway logs')
     && source.includes('origin: false')
     && source.includes('codexRemoteMcpAuthErrorHandler')
-    && source.includes('async (req: Request, res: Response, next: NextFunction) => {\n    try {')
-    && source.includes('next(err);')
     && oauthProvider.includes("InvalidTokenError } from '@modelcontextprotocol/sdk/server/auth/errors.js'")
   ) {
     return;

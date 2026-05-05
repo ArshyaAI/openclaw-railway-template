@@ -80,17 +80,44 @@ const authErrorHandler = `    await transport.handleRequest(req, res, req.body);
   };
   app.use('/mcp', codexRemoteMcpAuthErrorHandler);`;
 
-if (!source.includes(mcpRouteAfter)) {
-  throw new Error('MCP auth error handler anchor not found');
-}
-if (!source.includes(mcpRouteStartBefore) && !source.includes('next: NextFunction) => {\n    try {')) {
-  throw new Error('MCP route start anchor not found');
-}
-if (!source.includes('next: NextFunction) => {\n    try {')) {
-  source = source.replace(mcpRouteStartBefore, () => mcpRouteStartAfter);
-}
+const standaloneAuthErrorHandler = `  const codexRemoteMcpAuthErrorHandler = (err: unknown, _req: Request, res: Response, next: NextFunction) => {
+    if (res.headersSent) return next(err);
+    const statusCode = Number((err as any)?.status ?? (err as any)?.statusCode);
+    const message = err instanceof Error ? err.message : String(err ?? '');
+    const lower = message.toLowerCase();
+    const isAuthFailure = statusCode === 401 || statusCode === 403
+      || lower.includes('bearer')
+      || lower.includes('token')
+      || lower.includes('authorization')
+      || lower.includes('auth');
+    if (!isAuthFailure) return next(err);
+    const status = statusCode === 403 || lower.includes('forbidden') || lower.includes('scope') ? 403 : 401;
+    res.status(status).json({
+      error: status === 403 ? 'forbidden' : 'unauthorized',
+      error_description: 'MCP authentication failed',
+    });
+  };
+  app.use('/mcp', codexRemoteMcpAuthErrorHandler);`;
+
 if (!source.includes('codexRemoteMcpAuthErrorHandler')) {
-  source = source.replace(mcpRouteAfter, () => authErrorHandler);
+  if (source.includes(mcpRouteAfter)) {
+    if (!source.includes(mcpRouteStartBefore) && !source.includes('next: NextFunction) => {\n    try {')) {
+      throw new Error('MCP route start anchor not found');
+    }
+    if (!source.includes('next: NextFunction) => {\n    try {')) {
+      source = source.replace(mcpRouteStartBefore, () => mcpRouteStartAfter);
+    }
+    source = source.replace(mcpRouteAfter, () => authErrorHandler);
+  } else {
+    const startServerAnchor = `  // ---------------------------------------------------------------------------
+  // Start server`;
+    if (!source.includes(startServerAnchor)) {
+      throw new Error('MCP auth error handler anchor not found');
+    }
+    source = source.replace(startServerAnchor, () => `${standaloneAuthErrorHandler}
+
+${startServerAnchor}`);
+  }
 }
 
 if (!source.includes(tokenBefore)) {

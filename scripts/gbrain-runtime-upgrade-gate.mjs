@@ -74,7 +74,7 @@ const base = {
   ],
   rollback: [
     `cd /data/gbrain && git checkout ${current.sha || '<old_sha>'}`,
-    'bun install --frozen-lockfile',
+    'bun install --frozen-lockfile --ignore-scripts',
     '/data/.bun/bin/gbrain init --migrate-only --json',
     '/data/.bun/bin/gbrain apply-migrations --yes --non-interactive',
     '/data/.bun/bin/gbrain doctor --json',
@@ -199,7 +199,7 @@ function executeRemoteUpgrade(sha, backupPath, source, ref) {
     'fi',
     'git fetch "$fetch_source" "$fetch_ref"',
     'git checkout "$target_sha"',
-    'bun install --frozen-lockfile',
+    'bun install --frozen-lockfile --ignore-scripts',
     '/data/.bun/bin/gbrain --version | tee "$backup_dir/new_version.txt"',
     '/data/.bun/bin/gbrain init --migrate-only --json 2>&1 | tee "$backup_dir/init-migrate-only.log"',
     '/data/.bun/bin/gbrain apply-migrations --yes --non-interactive 2>&1 | tee "$backup_dir/apply-migrations.log"',

@@ -61,7 +61,7 @@ const result = {
     'Remote MCP/OAuth fixture canary PASS',
     'runtime shell quota guard installed and proven on the approved target service',
     'scheduler burn-in window complete with no new dead shell jobs',
-    'GBrain runtime doctor --json status ok',
+    'GBrain runtime doctor --json status ok/healthy with no warning checks',
     'upstream PR #619 consumed so resolver doctor warnings are not shipped',
     'upstream PR #620 consumed so remote MCP auth is not astack-custom',
     'upstream PR #626 consumed so source-scoped stale embedding is not a runtime cherry-pick',
@@ -226,8 +226,8 @@ async function checkRuntimeDoctor() {
     health_score: payload.health_score,
     warning_checks: warningChecks,
   };
-  if (payload.status === 'ok') {
-    return { status: 'PASS', reason: 'runtime doctor status ok', evidence };
+  if (['ok', 'healthy'].includes(payload.status) && warningChecks.length === 0) {
+    return { status: 'PASS', reason: `runtime doctor status ${payload.status}`, evidence };
   }
   return { status: 'BLOCKED', reason: `runtime doctor status=${payload.status || 'unknown'}`, evidence };
 }
