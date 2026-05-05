@@ -41,7 +41,14 @@ const base = {
     'mutates only /data/gbrain and migration state on the approved OpenClaw target service',
     'does not restart, redeploy, or touch the forbidden NIKIN production service',
     'runs GBrain schema/orchestrator migrations against the configured shared brain',
+    'target GBrain 0.26.8 includes migration v35, which installs a Postgres event trigger and backfills RLS on non-exempt public tables',
     'must be followed by full doctor plus direct/OpenClaw/remote/local canaries',
+  ],
+  pre_execute_readonly_checks: [
+    'confirm target service id is openclaw-railway-template / 6f333a2b-07d9-4219-8531-3b96fbc6a2f9',
+    'audit public tables where relrowsecurity=false and no GBRAIN:RLS_EXEMPT comment exists',
+    'if that audit returns any rows, stop and add explicit GBRAIN:RLS_EXEMPT comments or accept the RLS backfill before executing',
+    'decide whether upstream PR #619/#620/#626 must be merged/consumed first; upgrading to pure upstream 0.26.8 drops the live #626 cherry-pick',
   ],
   rollback: [
     `cd /data/gbrain && git checkout ${current.sha || '<old_sha>'}`,
@@ -92,11 +99,11 @@ function readRuntime() {
     'sh -lc',
     quote([
       'cd /data/gbrain',
-      'printf "service_name=' + TARGET_SERVICE_NAME + '\\n"',
-      'printf "service_id=' + TARGET_SERVICE_ID + '\\n"',
-      'printf "sha=" && git rev-parse HEAD',
-      'printf "branch=" && git branch --show-current || true',
-      'printf "version=" && /data/.bun/bin/gbrain --version',
+      `printf 'service_name=%s\\n' ${quote(TARGET_SERVICE_NAME)}`,
+      `printf 'service_id=%s\\n' ${quote(TARGET_SERVICE_ID)}`,
+      'printf "sha=%s\\n" "$(git rev-parse HEAD)"',
+      'printf "branch=%s\\n" "$(git branch --show-current || true)"',
+      'printf "version=%s\\n" "$(/data/.bun/bin/gbrain --version)"',
     ].join(' && ')),
   ].join(' ');
   const text = railwaySsh(command);
