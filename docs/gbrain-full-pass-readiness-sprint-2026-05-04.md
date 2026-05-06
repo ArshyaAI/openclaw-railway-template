@@ -1250,6 +1250,10 @@ Rollback updates:
   - #619 resolver: https://github.com/garrytan/gbrain/pull/619#issuecomment-4387422380
   - #620 HTTP auth: https://github.com/garrytan/gbrain/pull/620#issuecomment-4387422371
   - #626 stale embedding: https://github.com/garrytan/gbrain/pull/626#issuecomment-4387422370
+- Update-flow automation follow-up:
+  - `scripts/check-gbrain-upstream.mjs` now fetches PR #619/#620/#626 heads and compares them against the PR heads known to be included in the current custom cut.
+  - The 2026-05-06 sparse full gate now reports #626 head drift automatically: custom cut contains `2ebb917cf703e73994e8fe9d599b9f7b49ed7994`, while PR #626 is currently `5edd15acf4d6dc8192702a277341bd18725ccedb`.
+  - This is not a live emergency because active runtime engines return `page_id`/`source_id`, but it is an explicit upstream/currentness blocker and will prevent accidentally certifying an older custom cut as "latest safe".
 - Oracle Pro refresher attempt:
   - `/Users/arshya/.oracle/bin/oracle-pro preflight --json`: `status=ok`, `mode=no-message`, `messageSpent=false`.
   - `oracle-pro review --slug gbrain-readiness-20260506-upstream-blocker-gate --run --json`: `parse_failed`; raw answer shows `ERROR: Remote Chrome connection lost before Oracle finished`.

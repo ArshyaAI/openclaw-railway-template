@@ -14,6 +14,11 @@ const args = new Set(process.argv.slice(2));
 const json = args.has('--json');
 const includeRuntime = !args.has('--no-runtime');
 const localCheckout = process.env.GBRAIN_LOCAL_CHECKOUT || '/Users/arshya/gbrain';
+const customCutIncludedPrHeads = [
+  { number: 619, slug: 'resolver_routing_fixtures', sha: '7026ea2e851c15e9a1489b6df50c5b0d485d2c44' },
+  { number: 620, slug: 'http_mcp_auth_errors', sha: 'c6a3f9548d88b99eb72a2ed0787207ae98606cbe' },
+  { number: 626, slug: 'embed_stale_source_scoping', sha: '2ebb917cf703e73994e8fe9d599b9f7b49ed7994' },
+];
 
 const evidence = [];
 const warnings = [];
@@ -33,6 +38,7 @@ const localBinaryVersion = localBinary ? run([localBinary, ['--version']]) : nul
 const upstreamPackageVersion = remoteSha ? await readGitHubPackageVersion(remoteSha) : null;
 const npmPackageVersion = run(['npm', ['view', 'gbrain', 'version', '--json']]);
 const runtime = includeRuntime ? readRuntime() : null;
+const pendingPullRequests = await readPendingPullRequests(customCutIncludedPrHeads);
 
 compare('docker_pin_vs_upstream', pinnedDockerSha, remoteSha);
 compare('verifier_pin_vs_upstream', pinnedVerifierSha, remoteSha);
@@ -43,6 +49,7 @@ if (runtime?.version && upstreamPackageVersion) compare('runtime_version_vs_upst
 if (localPackageVersion && upstreamPackageVersion) compare('local_package_vs_upstream_package', localPackageVersion, upstreamPackageVersion);
 if (localBinaryVersion && upstreamPackageVersion) compare('local_binary_vs_upstream_package', normalizeVersion(localBinaryVersion), upstreamPackageVersion);
 compareClean('local_worktree_clean', localStatus);
+comparePendingPullRequestHeads(pendingPullRequests);
 
 const result = {
   status: warnings.length ? 'WARN' : 'PASS',
@@ -66,8 +73,10 @@ const result = {
     docker_repo: pinnedDockerRepo,
     docker_arg: pinnedDockerSha,
     upstream_sha: remoteSha,
+    included_pr_heads: customCutIncludedPrHeads,
     note: 'Custom cut is dogfood-approved but remains a FULL PASS blocker until upstream PRs are merged and consumed.',
   },
+  pending_pull_requests: pendingPullRequests,
   local: {
     checkout: localCheckout,
     head: localHead,
@@ -132,6 +141,53 @@ async function readGitHubPackageVersion(sha) {
     return (await res.json()).version || null;
   } catch {
     return null;
+  }
+}
+
+async function readPendingPullRequests(items) {
+  return Promise.all(items.map(async (item) => {
+    try {
+      const res = await fetch(`https://api.github.com/repos/garrytan/gbrain/pulls/${item.number}`, {
+        headers: { Accept: 'application/vnd.github+json' },
+      });
+      if (!res.ok) {
+        return { ...item, status: 'unknown', error: `github_http_${res.status}`, current_head_sha: null, state: null, merged: null, url: `https://github.com/garrytan/gbrain/pull/${item.number}` };
+      }
+      const pr = await res.json();
+      return {
+        ...item,
+        status: 'ok',
+        state: pr.state || null,
+        merged: Boolean(pr.merged_at),
+        title: pr.title || null,
+        url: pr.html_url || `https://github.com/garrytan/gbrain/pull/${item.number}`,
+        current_head_sha: pr.head?.sha || null,
+        included_in_custom_cut_sha: item.sha,
+      };
+    } catch (err) {
+      return { ...item, status: 'unknown', error: err instanceof Error ? err.message : String(err), current_head_sha: null, state: null, merged: null, url: `https://github.com/garrytan/gbrain/pull/${item.number}` };
+    }
+  }));
+}
+
+function comparePendingPullRequestHeads(items) {
+  for (const item of items) {
+    const name = `pending_pr_${item.number}_${item.slug}_head_vs_custom_cut`;
+    const expected = item.current_head_sha || 'unknown';
+    const actual = item.included_in_custom_cut_sha || item.sha || 'unknown';
+    const isOpen = item.state === 'open';
+    const status = isOpen && expected !== 'unknown' && actual !== expected ? 'WARN' : 'PASS';
+    evidence.push({
+      name,
+      actual,
+      expected,
+      status,
+      pr: item.url,
+      state: item.state,
+    });
+    if (status !== 'PASS') {
+      warnings.push(`${name}: expected custom cut to include current PR head ${expected}, got ${actual}`);
+    }
   }
 }
 

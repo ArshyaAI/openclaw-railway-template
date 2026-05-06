@@ -381,6 +381,8 @@ function summarizeUpdate(payload) {
     status: payload.status,
     upstream: payload.upstream,
     runtime: payload.runtime,
+    custom_runtime_cut: payload.custom_runtime_cut,
+    pending_pull_requests: payload.pending_pull_requests,
     warnings: payload.warnings || [],
   };
 }
