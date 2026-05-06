@@ -1239,6 +1239,12 @@ Rollback updates:
 - Scheduler burn-in is now pass: `29.0h/24h` complete, no new dead jobs after cutoff `2026-05-05T05:55:53Z`.
 - Refreshed upstream repo permission: `garrytan/gbrain` viewer permission remains `READ`; AStack cannot merge PR #619/#620/#626 directly from this account.
 - Local GBrain hygiene: `/Users/arshya/.bun/bin/gbrain` is `gbrain 0.27.0`; `/Users/arshya/gbrain` remains on `codex-gbrain-0.26.6-runtime-patches`, ahead/behind upstream, with only a mode-bit dirty diff on `src/cli.ts`.
+- PR #626 upstream review follow-up:
+  - Qodo flagged that `embedAllStale()` fallback grouping still used slug alone when `page_id` was unavailable.
+  - Fixed in PR branch `fix/embed-stale-source-scoping` at `5edd15acf4d6dc8192702a277341bd18725ccedb`.
+  - Change: fallback grouping is now `source_id + slug`; added regression coverage for duplicate slug rows from different sources with no `page_id`.
+  - Verification on the PR branch: `bun test test/embed.serial.test.ts --timeout 30000` -> `13 pass`, `0 fail`; `bun install --frozen-lockfile --ignore-scripts && bun run typecheck` -> pass; `git diff --check` -> pass.
+  - PR #626 remains `OPEN` and `MERGEABLE`; this resolves the review concern but does not remove the upstream-clean blocker until the PR is merged/consumed.
 - Oracle Pro refresher attempt:
   - `/Users/arshya/.oracle/bin/oracle-pro preflight --json`: `status=ok`, `mode=no-message`, `messageSpent=false`.
   - `oracle-pro review --slug gbrain-readiness-20260506-upstream-blocker-gate --run --json`: `parse_failed`; raw answer shows `ERROR: Remote Chrome connection lost before Oracle finished`.
