@@ -1,11 +1,11 @@
 # GBrain Dogfood Quickstart
 
 Status: `DOGFOOD_READY_CUSTOM_CUT`
-Date: 2026-05-05
+Date: 2026-05-06
 
 This guide is the practical operating loop for using the shared GBrain setup now.
 It is not a FULL PASS certificate. Upstream-clean FULL PASS still waits on the
-upstream PRs and scheduler burn-in recorded in
+upstream PRs and currentness cleanup recorded in
 `docs/gbrain-full-pass-readiness-sprint-2026-05-04.md`.
 
 Guide canary:
@@ -339,7 +339,7 @@ Use GBrain now for dogfooding. Do not call it upstream-clean FULL PASS until:
 - PR #620 is merged/consumed upstream.
 - PR #626 is merged/consumed upstream.
 - Runtime and Remote MCP move back from the custom SHA to upstream-clean GBrain.
-- Scheduler burn-in completes with no new dead shell jobs. Latest refreshed gate:
-  `11.7h/24h` complete at `2026-05-05T17:38Z`, with no new dead jobs after the
+- Scheduler burn-in remains clean. Latest refreshed gate:
+  `29.0h/24h` complete at `2026-05-06T10:54Z`, with no new dead jobs after the
   cutoff.
 - Fresh risk logs and canaries stay clean.
