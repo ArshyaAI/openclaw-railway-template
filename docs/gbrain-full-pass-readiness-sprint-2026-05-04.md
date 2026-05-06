@@ -1239,6 +1239,10 @@ Rollback updates:
 - Scheduler burn-in is now pass: `29.0h/24h` complete, no new dead jobs after cutoff `2026-05-05T05:55:53Z`.
 - Refreshed upstream repo permission: `garrytan/gbrain` viewer permission remains `READ`; AStack cannot merge PR #619/#620/#626 directly from this account.
 - Local GBrain hygiene: `/Users/arshya/.bun/bin/gbrain` is `gbrain 0.27.0`; `/Users/arshya/gbrain` remains on `codex-gbrain-0.26.6-runtime-patches`, ahead/behind upstream, with only a mode-bit dirty diff on `src/cli.ts`.
+- Oracle Pro refresher attempt:
+  - `/Users/arshya/.oracle/bin/oracle-pro preflight --json`: `status=ok`, `mode=no-message`, `messageSpent=false`.
+  - `oracle-pro review --slug gbrain-readiness-20260506-upstream-blocker-gate --run --json`: `parse_failed`; raw answer shows `ERROR: Remote Chrome connection lost before Oracle finished`.
+  - Reattach/harvest failed to locate the old ChatGPT tab, so this 2026-05-06 attempt is not counted as formal Pro approval. The previous 2026-05-05 Oracle review remains the last completed Pro artifact.
 
 2026-05-05 follow-up:
 
