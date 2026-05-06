@@ -1246,6 +1246,10 @@ Rollback updates:
   - Verification on the PR branch: `bun test test/embed.serial.test.ts --timeout 30000` -> `13 pass`, `0 fail`; `bun install --frozen-lockfile --ignore-scripts && bun run typecheck` -> pass; `git diff --check` -> pass.
   - PR #626 remains `OPEN` and `MERGEABLE`; this resolves the review concern but does not remove the upstream-clean blocker until the PR is merged/consumed.
   - Live redeploy not triggered for this follow-up: target runtime `de11d4c858b1a880931c008fbee3ceef92a8329a` still has the old fallback line, but read-only source inspection on the approved target confirmed both active engines return `page_id` and `source_id` from `listStaleChunks()`, so the fallback branch is not the live Postgres/PGLite path. The follow-up remains important for upstream completeness and future/alternate stale-row producers.
+- Maintainer merge packets posted with 2026-05-06 evidence:
+  - #619 resolver: https://github.com/garrytan/gbrain/pull/619#issuecomment-4387422380
+  - #620 HTTP auth: https://github.com/garrytan/gbrain/pull/620#issuecomment-4387422371
+  - #626 stale embedding: https://github.com/garrytan/gbrain/pull/626#issuecomment-4387422370
 - Oracle Pro refresher attempt:
   - `/Users/arshya/.oracle/bin/oracle-pro preflight --json`: `status=ok`, `mode=no-message`, `messageSpent=false`.
   - `oracle-pro review --slug gbrain-readiness-20260506-upstream-blocker-gate --run --json`: `parse_failed`; raw answer shows `ERROR: Remote Chrome connection lost before Oracle finished`.
